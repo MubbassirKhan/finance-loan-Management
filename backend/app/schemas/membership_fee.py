@@ -16,6 +16,14 @@ class MembershipFeeCreate(MembershipFeeBase):
     pass
 
 
+class MembershipFeeUpdate(MembershipFeeBase):
+    pass
+
+
+class MembershipFeeStatusUpdate(BaseModel):
+    is_active: bool
+
+
 class MembershipFeeResponse(MembershipFeeBase):
     mf_id: int
     is_active: bool

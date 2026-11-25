@@ -90,6 +90,18 @@ export const memberService = {
     const response = await api.post('/api/v1/users/membership-fees', feeData);
     return response.data;
   },
+
+  // PUT /api/v1/users/membership-fees/{mf_id}
+  updateFeeTier: async (mfId, feeData) => {
+    const response = await api.put(`/api/v1/users/membership-fees/${mfId}`, feeData);
+    return response.data;
+  },
+
+  // PATCH /api/v1/users/membership-fees/{mf_id}/status
+  updateFeeTierStatus: async (mfId, isActive) => {
+    const response = await api.patch(`/api/v1/users/membership-fees/${mfId}/status`, { is_active: isActive });
+    return response.data;
+  },
 };
 
 export default memberService;

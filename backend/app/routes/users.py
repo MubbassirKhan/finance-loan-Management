@@ -24,6 +24,8 @@ from app.schemas.user import (
 )
 from app.schemas.membership_fee import (
     MembershipFeeCreate,
+    MembershipFeeStatusUpdate,
+    MembershipFeeUpdate,
     MembershipFeeResponse,
 )
 from app.services import user_service
@@ -272,6 +274,48 @@ def create_fee_tier(
 ):
     """Create membership fee tier."""
     fee = user_service.create_membership_fee_tier(db, payload)
+    return fee
+
+
+@router.put(
+    "/membership-fees/{mf_id}",
+    response_model=MembershipFeeResponse,
+    summary="Update Membership Fee Tier",
+    description="Updates an existing configurable fee tier.",
+)
+def update_fee_tier(
+    mf_id: int,
+    payload: MembershipFeeUpdate,
+    admin: Admin = Depends(require_password_changed),
+    db: Session = Depends(get_db),
+):
+    fee = user_service.update_membership_fee_tier(db, mf_id, payload)
+    if not fee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Membership fee tier not found.",
+        )
+    return fee
+
+
+@router.patch(
+    "/membership-fees/{mf_id}/status",
+    response_model=MembershipFeeResponse,
+    summary="Update Membership Fee Tier Status",
+    description="Activates or marks a fee tier inactive without deleting it.",
+)
+def update_fee_tier_status(
+    mf_id: int,
+    payload: MembershipFeeStatusUpdate,
+    admin: Admin = Depends(require_password_changed),
+    db: Session = Depends(get_db),
+):
+    fee = user_service.update_membership_fee_tier_status(db, mf_id, payload)
+    if not fee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Membership fee tier not found.",
+        )
     return fee
 
 

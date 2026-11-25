@@ -6,7 +6,7 @@ from app.models.user import User
 from app.models.police_station import PoliceStation
 from app.models.membership_fee import MembershipFee
 from app.schemas.user import UserCreate, UserUpdate
-from app.schemas.membership_fee import MembershipFeeCreate
+from app.schemas.membership_fee import MembershipFeeCreate, MembershipFeeStatusUpdate, MembershipFeeUpdate
 
 
 def mask_bank_account(account_number: str) -> str:
@@ -237,8 +237,8 @@ def get_member_by_kgid(db: Session, kgid: str) -> Optional[Dict[str, Any]]:
 
 
 def list_membership_fees(db: Session) -> List[MembershipFee]:
-    """Returns all active membership fee tiers."""
-    stmt = select(MembershipFee).where(MembershipFee.is_active.is_(True)).order_by(MembershipFee.mf_id.asc())
+    """Returns all fee tiers so inactive tiers can be reactivated."""
+    stmt = select(MembershipFee).order_by(MembershipFee.mf_id.asc())
     return list(db.execute(stmt).scalars().all())
 
 
@@ -252,6 +252,40 @@ def create_membership_fee_tier(db: Session, payload: MembershipFeeCreate) -> Mem
         is_active=True,
     )
     db.add(fee)
+    db.commit()
+    db.refresh(fee)
+    return fee
+
+
+def update_membership_fee_tier(
+    db: Session,
+    mf_id: int,
+    payload: MembershipFeeUpdate,
+) -> Optional[MembershipFee]:
+    """Updates an existing membership fee tier."""
+    fee = db.get(MembershipFee, mf_id)
+    if not fee:
+        return None
+
+    for field, value in payload.model_dump().items():
+        setattr(fee, field, value)
+
+    db.commit()
+    db.refresh(fee)
+    return fee
+
+
+def update_membership_fee_tier_status(
+    db: Session,
+    mf_id: int,
+    payload: MembershipFeeStatusUpdate,
+) -> Optional[MembershipFee]:
+    """Activates or marks a fee tier inactive without deleting its record."""
+    fee = db.get(MembershipFee, mf_id)
+    if not fee:
+        return None
+
+    fee.is_active = payload.is_active
     db.commit()
     db.refresh(fee)
     return fee

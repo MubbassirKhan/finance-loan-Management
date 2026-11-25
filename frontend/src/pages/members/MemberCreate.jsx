@@ -72,7 +72,10 @@ export default function MemberCreate() {
         if (cancelled) return
         setStations((stRes.items ?? stRes.data ?? []).map(s => ({ value: s.ps_id, label: s.station_name })))
         const tiers = ftRes.items ?? ftRes.data ?? ftRes ?? []
-        setFeeTiers(tiers.map(f => ({
+        const selectableTiers = tiers.filter(f => (
+          f.is_active !== false || (member && Number(member.mf_id) === f.mf_id)
+        ))
+        setFeeTiers(selectableTiers.map(f => ({
           value: f.mf_id,
           label: `Tier ${f.mf_id} — ₹${Number(f.membership_fee).toLocaleString('en-IN')}`,
         })))
