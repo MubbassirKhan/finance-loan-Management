@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     ACCOUNT_LOCKOUT_MINUTES: int = 15
 
     model_config = SettingsConfigDict(
-        env_file=(str(BASE_DIR / ".env"), str(BASE_DIR / "backend" / ".env"), ".env"),
+        env_file=str(BASE_DIR / "backend" / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
