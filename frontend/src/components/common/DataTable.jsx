@@ -19,10 +19,9 @@ export const DataTable = ({
   const totalPages = totalPagesProp ?? Math.max(1, Math.ceil(total / size));
 
   return (
-    <div className={`bg-white rounded border border-slate-200 shadow-sm overflow-hidden ${className}`}>
-      {/* Table Container with Horizontal Scroll */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm border-collapse">
+    <div className={`min-w-0 overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm ${className}`}>
+      <div className="table-scroll">
+        <table className="w-full min-w-[42rem] border-collapse text-left text-sm">
           <thead>
             <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold text-xs tracking-wide uppercase">
               {columns.map((col, idx) => (

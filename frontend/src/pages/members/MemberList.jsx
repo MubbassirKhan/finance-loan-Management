@@ -237,7 +237,7 @@ export default function MemberList() {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="page-stack">
       <PageHeader
         title={t('members.title')}
         subtitle={t('members.subtitle')}

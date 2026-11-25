@@ -124,7 +124,7 @@ export default function StationList() {
   const totalPages = Math.ceil(total / PAGE_SIZE) || 1
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="page-stack">
       <PageHeader
         title={t('stations.title')}
         subtitle={t('stations.subtitle')}

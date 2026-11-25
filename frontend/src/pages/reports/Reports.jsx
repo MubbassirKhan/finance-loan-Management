@@ -15,7 +15,7 @@ const PLANNED_REPORTS = [
 export default function Reports() {
   const { t } = useLanguage()
   return (
-    <div className="p-6 space-y-5">
+    <div className="page-stack">
       <PageHeader title={t('reports.title')} subtitle={t('reports.subtitle')} />
 
       <div className="section-card p-8 text-center mb-6">

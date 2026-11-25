@@ -2,13 +2,14 @@ import React from 'react';
 
 export const PageHeader = ({ title, subtitle, actions = null }) => {
   return (
-    <div className="bg-white border-b border-slate-200 px-6 py-5 mb-6 shadow-sm">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">{title}</h1>
-          {subtitle && <p className="text-sm text-slate-500 mt-1">{subtitle}</p>}
+    <div className="border-b border-slate-200 bg-white px-4 py-5 sm:px-6 lg:px-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="mb-1 text-[10px] font-bold uppercase text-gov-primary">SP Office · Administration</p>
+          <h1 className="break-words text-xl font-bold leading-tight text-gov-navy sm:text-2xl">{title}</h1>
+          {subtitle && <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-slate-600">{subtitle}</p>}
         </div>
-        {actions && <div className="flex items-center gap-3 flex-wrap">{actions}</div>}
+        {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">{actions}</div>}
       </div>
     </div>
   );

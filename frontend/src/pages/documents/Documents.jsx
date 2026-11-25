@@ -6,7 +6,7 @@ import { useLanguage } from '../../context/LanguageContext.jsx'
 export default function Documents() {
   const { t } = useLanguage()
   return (
-    <div className="p-6 space-y-5">
+    <div className="page-stack">
       <PageHeader title={t('documents.title')} subtitle={t('documents.subtitle')} />
       <div className="section-card p-8 text-center">
         <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-orange-100 border-2 border-orange-200 mx-auto mb-4">

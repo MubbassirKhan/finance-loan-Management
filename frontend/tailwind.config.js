@@ -8,7 +8,7 @@ export default {
     extend: {
       colors: {
         gov: {
-          navy: '#0f2942',       // Official dark government navy
+          navy: '#0b1f35',       // Official dark government navy
           primary: '#1e3a8a',    // Deep administrative blue
           secondary: '#3b82f6',  // Accent blue
           surface: '#f8fafc',    // Clean background
@@ -20,7 +20,7 @@ export default {
         }
       },
       fontFamily: {
-        sans: ['"Inter"', '"Noto Sans Kannada"', 'system-ui', 'sans-serif'],
+        sans: ['"Source Sans 3"', '"Noto Sans Kannada"', 'system-ui', 'sans-serif'],
         kannada: ['"Noto Sans Kannada"', 'sans-serif'],
       }
     },

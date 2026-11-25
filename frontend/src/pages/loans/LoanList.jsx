@@ -15,7 +15,7 @@ export default function LoanList() {
   const { t } = useLanguage()
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="page-stack">
       <PageHeader title={t('loans.title')} subtitle={t('loans.subtitle')} />
 
       {/* Coming Soon banner */}

@@ -21,7 +21,7 @@ export default function Settings() {
   const navigate  = useNavigate()
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-6">
+    <div className="mx-auto w-full max-w-2xl space-y-5 px-4 py-5 sm:space-y-6 sm:px-6 sm:py-6 lg:px-8">
       <PageHeader title={t('settings.title')} subtitle={t('settings.subtitle')} />
 
       {/* Account Information */}
