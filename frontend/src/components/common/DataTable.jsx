@@ -23,18 +23,18 @@ export const DataTable = ({
       <div className="table-scroll">
         <table className="w-full min-w-[42rem] border-collapse text-left text-sm">
           <thead>
-            <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold text-xs tracking-wide uppercase">
+            <tr className="border-b-2 border-amber-400 bg-gov-navy text-[11px] font-bold uppercase text-white">
               {columns.map((col, idx) => (
                 <th
                   key={idx}
-                  className={`px-4 py-3.5 ${col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : 'text-left'} ${col.className || ''}`}
+                  className={`whitespace-nowrap px-4 py-4 leading-tight tracking-wide ${col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : 'text-left'} ${col.className || ''}`}
                 >
                   {col.label ?? col.header}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 text-slate-800">
+          <tbody className="divide-y divide-slate-100 text-slate-800">
             {loading ? (
               <tr>
                 <td colSpan={columns.length} className="px-4 py-12 text-center text-slate-500">
@@ -55,11 +55,11 @@ export const DataTable = ({
               </tr>
             ) : (
               data.map((row, rowIdx) => (
-                <tr key={rowIdx} className="hover:bg-slate-50 transition-colors">
+                <tr key={rowIdx} className="group transition-colors even:bg-slate-50/70 hover:bg-blue-50/80">
                   {columns.map((col, colIdx) => (
                     <td
                       key={colIdx}
-                      className={`px-4 py-3 text-sm ${col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : 'text-left'} ${col.className || ''}`}
+                      className={`px-4 py-3.5 align-middle text-sm text-slate-700 transition-colors group-hover:text-slate-900 ${col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : 'text-left'} ${col.className || ''}`}
                     >
                       {col.render ? col.render(row, rowIdx) : row[col.key ?? col.accessor]}
                     </td>
@@ -73,7 +73,7 @@ export const DataTable = ({
 
       {/* Pagination Footer */}
       {total > 0 && (
-        <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-slate-600">
+        <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 sm:flex-row">
           <div>
             <span>
               {t('common.total', 'Total')}: <strong className="font-semibold text-slate-900">{total}</strong> {t('common.records', 'records')}
@@ -89,18 +89,18 @@ export const DataTable = ({
             <button
               onClick={() => onPageChange && onPageChange(page - 1)}
               disabled={page <= 1 || loading}
-              className="p-1.5 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:border-gov-primary hover:bg-blue-50 hover:text-gov-primary disabled:cursor-not-allowed disabled:opacity-40"
               title="Previous Page"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="px-3 py-1 text-xs font-semibold bg-white border border-slate-300 rounded">
+            <span className="inline-flex h-9 min-w-9 items-center justify-center rounded-md border border-gov-primary bg-gov-primary px-2 text-xs font-bold text-white">
               {page}
             </span>
             <button
               onClick={() => onPageChange && onPageChange(page + 1)}
               disabled={page >= totalPages || loading}
-              className="p-1.5 rounded border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:border-gov-primary hover:bg-blue-50 hover:text-gov-primary disabled:cursor-not-allowed disabled:opacity-40"
               title="Next Page"
             >
               <ChevronRight className="w-4 h-4" />

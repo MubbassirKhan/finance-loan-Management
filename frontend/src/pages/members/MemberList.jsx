@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { UserPlus, Eye, Search, X, Pencil, UserCheck, UserX, Columns3, FileSpreadsheet, FileText } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader.jsx'
@@ -46,12 +46,37 @@ export default function MemberList() {
   const [visibleColumnKeys, setVisibleColumnKeys] = useState(DEFAULT_VISIBLE_COLUMNS)
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false)
   const [exporting, setExporting] = useState('')
+  const columnsMenuRef = useRef(null)
+  const columnsTriggerRef = useRef(null)
 
   // Debounce search input 400ms
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), 400)
     return () => clearTimeout(id)
   }, [search])
+
+  useEffect(() => {
+    if (!columnsMenuOpen) return undefined
+
+    const handlePointerDown = (event) => {
+      if (!columnsMenuRef.current?.contains(event.target)) {
+        setColumnsMenuOpen(false)
+      }
+    }
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setColumnsMenuOpen(false)
+        columnsTriggerRef.current?.focus()
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [columnsMenuOpen])
 
   // Load stations for filter dropdown once
   useEffect(() => {
@@ -103,17 +128,27 @@ export default function MemberList() {
   useEffect(() => { setPage(1) }, [debouncedSearch, stationId, status])
 
   const availableColumns = [
-    { key: 'kgid', label: t('members.kgid'), value: r => r.kgid, render: r => <span className="font-mono text-sm">{r.kgid}</span> },
+    { key: 'kgid', label: t('members.kgid'), value: r => r.kgid, render: r => <span className="inline-flex rounded bg-slate-100 px-2 py-1 font-mono text-xs font-bold text-gov-navy">{r.kgid}</span> },
     { key: 'share_number', label: t('members.shareNo'), value: r => r.share_number || '—', render: r => r.share_number || '—' },
     { key: 'buckle_number', label: t('members.buckleNo'), value: r => r.buckle_number || '—', render: r => r.buckle_number || '—' },
-    { key: 'full_name', label: t('members.fullName'), value: r => r.full_name, render: r => <span className="font-medium">{r.full_name}</span> },
+    { key: 'full_name', label: t('members.fullName'), value: r => r.full_name, render: r => <span className="font-semibold text-gov-navy">{r.full_name}</span> },
     { key: 'designation', label: t('members.designation'), value: r => r.designation || '—', render: r => r.designation || '—' },
+    { key: 'ps_id', label: 'Police Station ID', value: r => r.ps_id ?? '—', render: r => r.ps_id ?? '—' },
     {
       key: 'station',
       label: t('members.station'),
-      value: r => r.police_station_name || r.station_name || r.ps_id || '—',
-      render: r => r.police_station_name || r.station_name || r.ps_id || '—',
+      value: r => r.police_station_name || r.station_name || '—',
+      render: r => r.police_station_name || r.station_name || '—',
     },
+    { key: 'bank_account_masked', label: 'Bank Account (masked)', value: r => r.bank_account_masked || '—', render: r => <span className="font-mono">{r.bank_account_masked || '—'}</span> },
+    { key: 'ifsc_code', label: 'IFSC Code', value: r => r.ifsc_code || '—', render: r => r.ifsc_code || '—' },
+    { key: 'dob', label: 'Date of Birth', value: r => r.dob || '—', render: r => r.dob || '—' },
+    { key: 'gender', label: 'Gender', value: r => r.gender || '—', render: r => r.gender || '—' },
+    { key: 'caste', label: 'Caste', value: r => r.caste || '—', render: r => r.caste || '—' },
+    { key: 'sub_caste', label: 'Sub-caste', value: r => r.sub_caste || '—', render: r => r.sub_caste || '—' },
+    { key: 'category', label: 'Category', value: r => r.category || '—', render: r => r.category || '—' },
+    { key: 'financial_year', label: 'Financial Year', value: r => r.financial_year || '—', render: r => r.financial_year || '—' },
+    { key: 'financial_month', label: 'Financial Month', value: r => r.financial_month || '—', render: r => r.financial_month || '—' },
     {
       key: 'status',
       label: t('common.status'),
@@ -124,6 +159,9 @@ export default function MemberList() {
         </span>
       ),
     },
+    { key: 'mf_id', label: 'Membership Fee ID', value: r => r.mf_id ?? '—', render: r => r.mf_id ?? '—' },
+    { key: 'created_at', label: 'Created At', value: r => r.created_at || '—', render: r => <span className="whitespace-nowrap text-xs">{r.created_at || '—'}</span> },
+    { key: 'updated_at', label: 'Updated At', value: r => r.updated_at || '—', render: r => <span className="whitespace-nowrap text-xs">{r.updated_at || '—'}</span> },
   ]
 
   const columns = [
@@ -140,7 +178,7 @@ export default function MemberList() {
           <button
             type="button"
             onClick={() => navigate(`/members/${encodeURIComponent(r.kgid)}`)}
-            className="inline-flex h-7 w-7 items-center justify-center rounded border border-gov-primary text-gov-primary transition-colors hover:bg-blue-50"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-blue-200 bg-white text-gov-primary shadow-sm transition-colors hover:border-gov-primary hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gov-primary"
             title={t('common.view')}
             aria-label={`View ${r.full_name}`}
           >
@@ -149,7 +187,7 @@ export default function MemberList() {
           <button
             type="button"
             onClick={() => navigate(`/members/${encodeURIComponent(r.kgid)}/edit`)}
-            className="inline-flex h-7 w-7 items-center justify-center rounded border border-orange-300 text-orange-700 transition-colors hover:bg-orange-50"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-orange-200 bg-white text-orange-700 shadow-sm transition-colors hover:border-orange-400 hover:bg-orange-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
             title="Edit member"
             aria-label={`Edit ${r.full_name}`}
           >
@@ -158,10 +196,10 @@ export default function MemberList() {
           <button
             type="button"
             onClick={() => setMemberPendingStatus(r)}
-            className={`inline-flex h-7 w-7 items-center justify-center rounded border transition-colors ${
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-md border bg-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 ${
               r.status === 'Active'
-                ? 'border-red-300 text-red-700 hover:bg-red-50'
-                : 'border-green-300 text-green-700 hover:bg-green-50'
+                ? 'border-red-200 text-red-700 hover:border-red-400 hover:bg-red-50 focus-visible:ring-red-500'
+                : 'border-emerald-200 text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50 focus-visible:ring-emerald-600'
             }`}
             title={r.status === 'Active' ? 'Make member inactive' : 'Make member active'}
             aria-label={`${r.status === 'Active' ? 'Make inactive' : 'Make active'}: ${r.full_name}`}
@@ -252,30 +290,28 @@ export default function MemberList() {
         }
       />
 
-      {/* Filters */}
-      <div className="section-card p-4 flex flex-wrap gap-3 items-end">
-        {/* Search */}
-        <div className="flex-1 min-w-48 relative">
+      <div className="section-card flex flex-wrap items-center gap-2 p-3">
+        <div className="relative min-w-[220px] flex-[1_1_300px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           <input
             type="text"
             placeholder={t('members.searchPlaceholder')}
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-gov-primary"
+            className="h-10 w-full rounded-sm border border-slate-300 bg-white py-2 pl-9 pr-8 text-sm text-slate-800 placeholder:text-slate-400 transition-colors focus:border-gov-primary focus:outline-none focus:ring-2 focus:ring-blue-100"
           />
           {search && (
-            <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+            <button type="button" aria-label="Clear search" onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
 
-        {/* Station filter */}
         <select
           value={stationId}
           onChange={e => setStationId(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-gov-primary min-w-44"
+          aria-label={t('members.allStations')}
+          className="h-10 min-w-[180px] flex-[0_1_210px] rounded-sm border border-slate-300 bg-white px-3 text-sm text-slate-700 transition-colors focus:border-gov-primary focus:outline-none focus:ring-2 focus:ring-blue-100"
         >
           <option value="">{t('members.allStations')}</option>
           {stations.map(s => (
@@ -283,42 +319,38 @@ export default function MemberList() {
           ))}
         </select>
 
-        {/* Status filter */}
         <select
           value={status}
           onChange={e => setStatus(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-gov-primary"
+          aria-label={t('common.allStatuses')}
+          className="h-10 min-w-[140px] flex-[0_1_155px] rounded-sm border border-slate-300 bg-white px-3 text-sm text-slate-700 transition-colors focus:border-gov-primary focus:outline-none focus:ring-2 focus:ring-blue-100"
         >
           <option value="">{t('common.allStatuses')}</option>
           <option value="Active">{t('common.active')}</option>
           <option value="Inactive">{t('common.inactive')}</option>
         </select>
 
-        {/* Clear */}
         {(search || stationId || status) && (
-          <Button variant="outline" size="sm" onClick={() => { setSearch(''); setStationId(''); setStatus('') }}>
+          <Button variant="outline" size="sm" className="h-10 rounded-sm whitespace-nowrap transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:scale-[0.98]" onClick={() => { setSearch(''); setStationId(''); setStatus('') }}>
             {t('common.clearFilters')}
           </Button>
         )}
-      </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-gray-500">
-          {t('common.showingOf', { count: members.length, total })}
-        </p>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <div className="relative">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div ref={columnsMenuRef} className="relative">
             <button
               type="button"
+              ref={columnsTriggerRef}
               onClick={() => setColumnsMenuOpen(open => !open)}
               aria-expanded={columnsMenuOpen}
               aria-haspopup="true"
-              className="inline-flex items-center gap-2 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              aria-controls="member-columns-menu"
+              className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-sm border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-gov-primary hover:bg-blue-50 hover:text-gov-primary hover:shadow-sm active:translate-y-0 active:scale-[0.98]"
             >
               <Columns3 className="h-4 w-4" /> Columns
             </button>
             {columnsMenuOpen && (
-              <div className="absolute right-0 z-20 mt-1 max-h-80 w-60 overflow-y-auto rounded border border-slate-200 bg-white p-3 shadow-lg">
+              <div id="member-columns-menu" className="absolute right-0 z-20 mt-1 max-h-80 w-60 overflow-y-auto rounded border border-slate-200 bg-white p-3 shadow-lg">
                 <p className="mb-2 border-b border-slate-200 pb-2 text-xs font-semibold uppercase text-slate-500">Visible columns</p>
                 {availableColumns.map(column => (
                   <label key={column.key} className="flex cursor-pointer items-center gap-2 py-1.5 text-sm text-slate-700">
@@ -341,6 +373,7 @@ export default function MemberList() {
           <Button
             variant="outline"
             size="sm"
+            className="h-10 rounded-sm whitespace-nowrap transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:scale-[0.98]"
             icon={<FileText className="h-4 w-4" />}
             onClick={() => exportMembers('pdf')}
             disabled={Boolean(exporting) || loading || total === 0 || visibleColumnKeys.length === 0}
@@ -351,6 +384,7 @@ export default function MemberList() {
           <Button
             variant="outline"
             size="sm"
+            className="h-10 rounded-sm whitespace-nowrap transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:scale-[0.98]"
             icon={<FileSpreadsheet className="h-4 w-4" />}
             onClick={() => exportMembers('excel')}
             disabled={Boolean(exporting) || loading || total === 0 || visibleColumnKeys.length === 0}
@@ -360,6 +394,10 @@ export default function MemberList() {
           </Button>
         </div>
       </div>
+
+      <p className="text-xs text-gray-500">
+        {t('common.showingOf', { count: members.length, total })}
+      </p>
 
       {/* Table */}
       <DataTable
