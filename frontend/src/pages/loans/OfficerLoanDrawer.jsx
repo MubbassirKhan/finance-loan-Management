@@ -113,10 +113,38 @@ export default function OfficerLoanDrawer({
     { key: 'status', label: t('common.status') },
   ]
 
+  const formatNumberForPdf = (val) => {
+    if (val == null || val === '') return '-'
+    return Number(val).toLocaleString('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  }
+
   const formatINRForPdf = (val) => {
     if (val == null || val === '') return '-'
-    return `INR ${Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    return `INR ${formatNumberForPdf(val)}`
   }
+
+  const openingAdvanceTotal = (() => {
+    let runningAdvance = activeLoan ? Number(activeLoan.sanction_amount || 0) : 0
+    let total = 0
+    loanPayments.forEach((payment) => {
+      total += runningAdvance
+      runningAdvance = Number(payment.balance || 0)
+    })
+    return total
+  })()
+
+  const getHistoryTotals = () => ({
+    installment: loanPayments.length,
+    payment_date: '',
+    opening_advance: openingAdvanceTotal,
+    recovery: loanPayments.reduce((sum, payment) => sum + Number(payment.recovered_amount || 0), 0),
+    balance: activeLoan ? Number(activeLoan.outstanding_balance || 0) : 0,
+    interest: loanPayments.reduce((sum, payment) => sum + Number(payment.total_interest || 0), 0),
+    status: '',
+  })
 
   const getHistoryRows = () => {
     let runningAdvance = activeLoan ? Number(activeLoan.sanction_amount) : 0
@@ -126,10 +154,10 @@ export default function OfficerLoanDrawer({
       return {
         installment: idx + 1,
         payment_date: payment.payment_date,
-        opening_advance: formatINR(openingAdvance),
-        recovery: formatINR(payment.recovered_amount),
-        balance: formatINR(payment.balance),
-        interest: formatINR(payment.total_interest),
+        opening_advance: formatNumberForPdf(openingAdvance),
+        recovery: formatNumberForPdf(payment.recovered_amount),
+        balance: formatNumberForPdf(payment.balance),
+        interest: formatNumberForPdf(payment.total_interest),
         status: payment.status,
       }
     })
@@ -140,7 +168,17 @@ export default function OfficerLoanDrawer({
     if (!user) return
     const selectedColumns = historyColumnOptions.filter((column) => visibleHistoryColumns[column.key])
     const headers = selectedColumns.map((column) => column.label)
-    const rows = getHistoryRows().map((row) => selectedColumns.map((column) => row[column.key]))
+    const historyRows = getHistoryRows()
+    const totals = getHistoryTotals()
+    const rows = historyRows.map((row) => selectedColumns.map((column) => row[column.key]))
+    const totalRow = selectedColumns.map((column) => {
+      if (column.key === 'opening_advance') return formatNumberForPdf(totals.opening_advance)
+      if (column.key === 'recovery') return formatNumberForPdf(totals.recovery)
+      if (column.key === 'balance') return formatNumberForPdf(totals.balance)
+      if (column.key === 'interest') return formatNumberForPdf(totals.interest)
+      if (column.key === 'installment') return `Total: ${totals.installment}`
+      return column.key === 'payment_date' ? '' : totals.status
+    })
 
     const csvContent =
       '\uFEFF' +
@@ -149,6 +187,7 @@ export default function OfficerLoanDrawer({
         [],
         headers,
         ...rows,
+        totalRow,
       ]
         .map((r) => r.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
         .join('\n')
@@ -177,9 +216,10 @@ export default function OfficerLoanDrawer({
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
       const pageWidth = pdf.internal.pageSize.getWidth()
 
-      pdf.setFillColor(11, 31, 53)
-      pdf.rect(0, 0, pageWidth, 74, 'F')
-      pdf.setTextColor(255, 255, 255)
+      pdf.setDrawColor(80, 80, 80)
+      pdf.setLineWidth(0.5)
+      pdf.line(36, 68, pageWidth - 36, 68)
+      pdf.setTextColor(20, 20, 20)
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(14)
       pdf.text('POLICE CREDIT CO-OPERATIVE SOCIETY', 36, 30)
@@ -189,13 +229,13 @@ export default function OfficerLoanDrawer({
       pdf.text(`KGID: ${user.kgid}`, pageWidth - 36, 48, { align: 'right' })
       pdf.setFontSize(8)
       pdf.text(`Generated: ${new Date().toLocaleString('en-IN')}`, pageWidth - 36, 62, { align: 'right' })
-      pdf.setTextColor(15, 41, 66)
+      pdf.setTextColor(20, 20, 20)
       pdf.setFontSize(16)
       pdf.text(user.full_name, 36, 102)
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(9)
-      pdf.setTextColor(71, 85, 105)
-      pdf.text(`${user.designation || '—'} • ${user.station_name || '—'}`, 36, 118)
+      pdf.setTextColor(55, 55, 55)
+      pdf.text(`${user.designation || '-'} | ${user.station_name || '-'}`, 36, 118)
 
       const summaryRows = [
         [
@@ -220,15 +260,15 @@ export default function OfficerLoanDrawer({
         head: [['Loan Information', 'Details', 'Loan Information', 'Details']],
         body: summaryRows,
         theme: 'grid',
-        styles: { fontSize: 8.5, cellPadding: 5, overflow: 'linebreak', valign: 'middle' },
-        headStyles: { fillColor: [11, 31, 53], textColor: [255, 255, 255], fontStyle: 'bold' },
+        headStyles: { fillColor: [255, 255, 255], textColor: [20, 20, 20], fontStyle: 'bold', lineWidth: 0.25, lineColor: [120, 120, 120] },
         columnStyles: {
-          0: { cellWidth: 90, fontStyle: 'bold', textColor: [71, 85, 105] },
+          0: { cellWidth: 90, fontStyle: 'bold', textColor: [45, 45, 45] },
           1: { cellWidth: 160 },
-          2: { cellWidth: 90, fontStyle: 'bold', textColor: [71, 85, 105] },
+          2: { cellWidth: 90, fontStyle: 'bold', textColor: [45, 45, 45] },
           3: { cellWidth: 160 },
         },
-        alternateRowStyles: { fillColor: [248, 250, 252] },
+        styles: { fontSize: 8.5, cellPadding: 5, overflow: 'linebreak', valign: 'middle', textColor: [20, 20, 20], lineWidth: 0.25, lineColor: [180, 180, 180] },
+        alternateRowStyles: { fillColor: [255, 255, 255] },
         margin: { left: 36, right: 36 },
       })
 
@@ -237,11 +277,32 @@ export default function OfficerLoanDrawer({
       autoTable(pdf, {
         startY: pdf.lastAutoTable.finalY + 24,
         head: [selectedColumns.map((column) => column.label)],
-        body: historyRows.map((row) => selectedColumns.map((column) => String(row[column.key] ?? ''))),
+        body: [
+          ...historyRows.map((row) => selectedColumns.map((column) => String(row[column.key] ?? ''))),
+          selectedColumns.map((column) => {
+            const totals = getHistoryTotals()
+            if (column.key === 'opening_advance') return formatNumberForPdf(totals.opening_advance)
+            if (column.key === 'recovery') return formatNumberForPdf(totals.recovery)
+            if (column.key === 'balance') return formatNumberForPdf(totals.balance)
+            if (column.key === 'interest') return formatNumberForPdf(totals.interest)
+            if (column.key === 'installment') return `Total: ${totals.installment}`
+            return ''
+          }),
+        ],
+        foot: [],
         theme: 'grid',
-        styles: { fontSize: 7.5, cellPadding: 4, overflow: 'linebreak', halign: 'left' },
-        headStyles: { fillColor: [11, 31, 53], textColor: [255, 255, 255] },
-        alternateRowStyles: { fillColor: [248, 250, 252] },
+        styles: { fontSize: 7.5, cellPadding: 4, overflow: 'linebreak', halign: 'left', textColor: [20, 20, 20], lineWidth: 0.25, lineColor: [180, 180, 180] },
+        headStyles: { fillColor: [255, 255, 255], textColor: [20, 20, 20], fontStyle: 'bold', lineWidth: 0.25, lineColor: [120, 120, 120] },
+        alternateRowStyles: { fillColor: [255, 255, 255] },
+        didParseCell: (data) => {
+          if (data.row.section === 'body' && data.row.index === historyRows.length) {
+            data.cell.styles.fillColor = [245, 245, 245]
+            data.cell.styles.textColor = [20, 20, 20]
+            data.cell.styles.fontStyle = 'bold'
+            data.cell.styles.lineWidth = 0.3
+            data.cell.styles.lineColor = [120, 120, 120]
+          }
+        },
         margin: { left: 36, right: 36 },
       })
 
@@ -249,7 +310,7 @@ export default function OfficerLoanDrawer({
       for (let page = 1; page <= pageCount; page += 1) {
         pdf.setPage(page)
         pdf.setFontSize(8)
-        pdf.setTextColor(100, 116, 139)
+        pdf.setTextColor(80, 80, 80)
         pdf.text('SP Office - Police Credit Co-operative Society Records', 36, pdf.internal.pageSize.getHeight() - 24)
         pdf.text(`Page ${page} of ${pageCount}`, pageWidth - 36, pdf.internal.pageSize.getHeight() - 24, { align: 'right' })
       }
