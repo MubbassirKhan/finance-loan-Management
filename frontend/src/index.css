@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Kannada font utility class */
+  .font-kannada {
+    font-family: 'Noto Sans Kannada', sans-serif;
+  }
+
+  body {
+    font-family: 'Inter', 'Noto Sans Kannada', system-ui, sans-serif;
+    @apply bg-gray-50 text-gray-900;
+  }
+
+  /* Smooth scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-100;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-400 rounded;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-500;
+  }
+}
+
+@layer components {
+  /* Government-style focus ring */
+  .gov-focus {
+    @apply focus:outline-none focus:ring-2 focus:ring-gov-primary focus:ring-offset-1;
+  }
+
+  /* Status badge variants */
+  .badge-active {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-sm text-xs font-medium bg-green-100 text-green-800 border border-green-200;
+  }
+  .badge-inactive {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-sm text-xs font-medium bg-red-100 text-red-800 border border-red-200;
+  }
+  .badge-pending {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-sm text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200;
+  }
+
+  /* Section card */
+  .section-card {
+    @apply bg-white border border-gray-200 rounded shadow-sm;
+  }
+
+  /* Form section header */
+  .form-section-header {
+    @apply text-sm font-semibold text-gov-primary uppercase tracking-wide pb-2 mb-4 border-b border-gray-200;
+  }
+}

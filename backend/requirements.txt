@@ -1,0 +1,18 @@
+# FastAPI & ASGI Web Server
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+
+# Database & ORM
+SQLAlchemy>=2.0.35
+psycopg[binary]>=3.2.0
+
+# Data Validation & Configuration
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+
+# Security & Cryptography
+bcrypt>=4.2.0
+python-multipart>=0.0.12
+
+# Environment Variables
+python-dotenv>=1.0.0
