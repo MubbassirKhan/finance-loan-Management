@@ -312,7 +312,7 @@ export default function LoanList() {
   // Export currently visible columns to CSV
   const handleExportCSV = () => {
     const colDefs = [
-      visibleCols.sl_no && { key: 'sl_no', label: 'Sl. No.', get: (_, idx) => (page - 1) * PAGE_SIZE + idx + 1 },
+      // visibleCols.sl_no && { key: 'sl_no', label: 'Sl. No.', get: (_, idx) => (page - 1) * PAGE_SIZE + idx + 1 },
       { key: 'full_name', label: 'Officer Name', get: (r) => r.full_name },
       visibleCols.rank && { key: 'rank', label: 'Rank', get: (r) => r.designation },
       visibleCols.kgid && { key: 'kgid', label: 'KGID', get: (r) => r.kgid },

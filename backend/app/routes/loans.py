@@ -283,3 +283,30 @@ def download_loan_attachment(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment file is missing.")
 
     return FileResponse(file_path, filename=file_path.name)
+
+
+@router.get(
+    "/{loan_id}/attachment/view",
+    summary="View Loan Attachment",
+)
+def view_loan_attachment(
+    loan_id: int,
+    admin: Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Serve a loan attachment inline for browser preview."""
+    loan = db.get(Loan, loan_id)
+    if not loan or not loan.document_attachment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found.")
+
+    upload_root = settings.upload_path.resolve()
+    file_path = (upload_root / loan.document_attachment).resolve()
+    try:
+        file_path.relative_to(upload_root)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found.")
+
+    if not file_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment file is missing.")
+
+    return FileResponse(file_path, filename=file_path.name, content_disposition_type="inline")

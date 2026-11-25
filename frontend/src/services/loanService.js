@@ -65,6 +65,12 @@ export const loanService = {
     const base = api.defaults.baseURL || 'http://127.0.0.1:8000';
     return `${base}/api/v1/loans/${loanId}/attachment/download`;
   },
+
+  // GET /api/v1/loans/{loan_id}/attachment/view
+  getAttachmentViewUrl: (loanId) => {
+    const base = api.defaults.baseURL || 'http://127.0.0.1:8000';
+    return `${base}/api/v1/loans/${loanId}/attachment/view`;
+  },
 };
 
 export default loanService;

@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import {
   X, Printer, Download, User, HandCoins, FileSpreadsheet,
-  PlusCircle, Shield, CheckCircle2, Clock, Paperclip
+  PlusCircle, Shield, CheckCircle2, Clock, Paperclip, Eye, Columns3
 } from 'lucide-react'
 import Button from '../../components/common/Button.jsx'
 import Loading from '../../components/common/Loading.jsx'
@@ -28,6 +28,18 @@ export default function OfficerLoanDrawer({
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('history') // 'membership' | 'loans' | 'history'
   const [selectedLoanId, setSelectedLoanId] = useState(initialLoanId)
+  const [historyColumnsOpen, setHistoryColumnsOpen] = useState(false)
+  const [attachmentPreview, setAttachmentPreview] = useState(null)
+  const [visibleHistoryColumns, setVisibleHistoryColumns] = useState({
+    installment: true,
+    payment_date: true,
+    opening_advance: true,
+    recovery: true,
+    balance: true,
+    interest: true,
+    status: true,
+  })
+  const historyColumnsRef = useRef(null)
 
   const fetchHistory = useCallback(async () => {
     if (!kgid) return
@@ -57,11 +69,28 @@ export default function OfficerLoanDrawer({
   // Escape key close
   useEffect(() => {
     const handleKey = (e) => {
-      if (e.key === 'Escape' && isOpen) onClose()
+      if (e.key === 'Escape' && isOpen) {
+        if (attachmentPreview) {
+          setAttachmentPreview(null)
+        } else if (historyColumnsOpen) {
+          setHistoryColumnsOpen(false)
+        } else {
+          onClose()
+        }
+      }
+    }
+    const handleOutside = (e) => {
+      if (historyColumnsOpen && historyColumnsRef.current && !historyColumnsRef.current.contains(e.target)) {
+        setHistoryColumnsOpen(false)
+      }
     }
     window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [isOpen, onClose])
+    document.addEventListener('mousedown', handleOutside)
+    return () => {
+      window.removeEventListener('keydown', handleKey)
+      document.removeEventListener('mousedown', handleOutside)
+    }
+  }, [isOpen, onClose, historyColumnsOpen, attachmentPreview])
 
   if (!isOpen) return null
 
@@ -74,37 +103,44 @@ export default function OfficerLoanDrawer({
     ? allPayments.filter((p) => p.loan_id === activeLoan.loan_id)
     : allPayments
 
+  const historyColumnOptions = [
+    { key: 'installment', label: t('loans.installmentNo') },
+    { key: 'payment_date', label: t('loans.paymentDate') },
+    { key: 'opening_advance', label: t('loans.openingAdvance') },
+    { key: 'recovery', label: t('loans.recovery') },
+    { key: 'balance', label: t('loans.balance') },
+    { key: 'interest', label: t('loans.interest') },
+    { key: 'status', label: t('common.status') },
+  ]
+
+  const formatINRForPdf = (val) => {
+    if (val == null || val === '') return '-'
+    return `INR ${Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
+
+  const getHistoryRows = () => {
+    let runningAdvance = activeLoan ? Number(activeLoan.sanction_amount) : 0
+    return loanPayments.map((payment, idx) => {
+      const openingAdvance = runningAdvance
+      runningAdvance = Number(payment.balance)
+      return {
+        installment: idx + 1,
+        payment_date: payment.payment_date,
+        opening_advance: formatINR(openingAdvance),
+        recovery: formatINR(payment.recovered_amount),
+        balance: formatINR(payment.balance),
+        interest: formatINR(payment.total_interest),
+        status: payment.status,
+      }
+    })
+  }
+
   // Export officer's transactional history to CSV
   const handleDownloadHistoryCSV = () => {
     if (!user) return
-    const headers = [
-      'Installment #',
-      'Loan ID',
-      'Loan Type',
-      'Payment Date',
-      'Opening Advance (INR)',
-      'Recovered Amount (INR)',
-      'Remaining Balance (INR)',
-      'Interest Paid (INR)',
-      'Status',
-    ]
-
-    let runningAdvance = activeLoan ? Number(activeLoan.sanction_amount) : 0
-    const rows = loanPayments.map((p, idx) => {
-      const adv = runningAdvance
-      runningAdvance = Number(p.balance)
-      return [
-        idx + 1,
-        p.loan_id,
-        activeLoan?.loan_type || '',
-        p.payment_date,
-        adv.toFixed(2),
-        Number(p.recovered_amount).toFixed(2),
-        Number(p.balance).toFixed(2),
-        Number(p.total_interest).toFixed(2),
-        p.status,
-      ]
-    })
+    const selectedColumns = historyColumnOptions.filter((column) => visibleHistoryColumns[column.key])
+    const headers = selectedColumns.map((column) => column.label)
+    const rows = getHistoryRows().map((row) => selectedColumns.map((column) => row[column.key]))
 
     const csvContent =
       '\uFEFF' +
@@ -126,9 +162,102 @@ export default function OfficerLoanDrawer({
     URL.revokeObjectURL(url)
   }
 
-  // Print / Save PDF
-  const handlePrint = () => {
-    window.print()
+  // Generate a compact vertical A4 loan report.
+  const handlePrint = async () => {
+    if (!user || !activeLoan) return
+    if (Object.values(visibleHistoryColumns).every((visible) => !visible)) {
+      toastError('Select at least one column before generating the PDF.')
+      return
+    }
+    try {
+      const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable'),
+      ])
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' })
+      const pageWidth = pdf.internal.pageSize.getWidth()
+
+      pdf.setFillColor(11, 31, 53)
+      pdf.rect(0, 0, pageWidth, 74, 'F')
+      pdf.setTextColor(255, 255, 255)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(14)
+      pdf.text('POLICE CREDIT CO-OPERATIVE SOCIETY', 36, 30)
+      pdf.setFontSize(10)
+      pdf.text('Official Loan & Transactional Record', 36, 48)
+      pdf.setFontSize(9)
+      pdf.text(`KGID: ${user.kgid}`, pageWidth - 36, 48, { align: 'right' })
+      pdf.setFontSize(8)
+      pdf.text(`Generated: ${new Date().toLocaleString('en-IN')}`, pageWidth - 36, 62, { align: 'right' })
+      pdf.setTextColor(15, 41, 66)
+      pdf.setFontSize(16)
+      pdf.text(user.full_name, 36, 102)
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(9)
+      pdf.setTextColor(71, 85, 105)
+      pdf.text(`${user.designation || '—'} • ${user.station_name || '—'}`, 36, 118)
+
+      const summaryRows = [
+        [
+          'Loan Scheme', activeLoan.loan_type || '-',
+          'Sanction Amount', formatINRForPdf(activeLoan.sanction_amount),
+        ],
+        [
+          'Monthly Principal', formatINRForPdf(activeLoan.monthly_principal),
+          'Monthly Interest', formatINRForPdf(activeLoan.monthly_interest),
+        ],
+        [
+          'Installments', `${activeLoan.paid_installments || 0} / ${activeLoan.total_installments || 0}`,
+          'Outstanding', formatINRForPdf(activeLoan.outstanding_balance),
+        ],
+        [
+          'Payment Start', activeLoan.start_month || '-',
+          'End Date', activeLoan.end_date || '-',
+        ],
+      ]
+      autoTable(pdf, {
+        startY: 132,
+        head: [['Loan Information', 'Details', 'Loan Information', 'Details']],
+        body: summaryRows,
+        theme: 'grid',
+        styles: { fontSize: 8.5, cellPadding: 5, overflow: 'linebreak', valign: 'middle' },
+        headStyles: { fillColor: [11, 31, 53], textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 90, fontStyle: 'bold', textColor: [71, 85, 105] },
+          1: { cellWidth: 160 },
+          2: { cellWidth: 90, fontStyle: 'bold', textColor: [71, 85, 105] },
+          3: { cellWidth: 160 },
+        },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        margin: { left: 36, right: 36 },
+      })
+
+      const selectedColumns = historyColumnOptions.filter((column) => visibleHistoryColumns[column.key])
+      const historyRows = getHistoryRows()
+      autoTable(pdf, {
+        startY: pdf.lastAutoTable.finalY + 24,
+        head: [selectedColumns.map((column) => column.label)],
+        body: historyRows.map((row) => selectedColumns.map((column) => String(row[column.key] ?? ''))),
+        theme: 'grid',
+        styles: { fontSize: 7.5, cellPadding: 4, overflow: 'linebreak', halign: 'left' },
+        headStyles: { fillColor: [11, 31, 53], textColor: [255, 255, 255] },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        margin: { left: 36, right: 36 },
+      })
+
+      const pageCount = pdf.getNumberOfPages()
+      for (let page = 1; page <= pageCount; page += 1) {
+        pdf.setPage(page)
+        pdf.setFontSize(8)
+        pdf.setTextColor(100, 116, 139)
+        pdf.text('SP Office - Police Credit Co-operative Society Records', 36, pdf.internal.pageSize.getHeight() - 24)
+        pdf.text(`Page ${page} of ${pageCount}`, pageWidth - 36, pdf.internal.pageSize.getHeight() - 24, { align: 'right' })
+      }
+
+      pdf.save(`loan_report_${user.kgid}_loan_${activeLoan.loan_id}.pdf`)
+    } catch (err) {
+      toastError(err.message || 'Could not generate PDF report.')
+    }
   }
 
   return (
@@ -301,15 +430,24 @@ export default function OfficerLoanDrawer({
 
                         <div className="flex items-center gap-2">
                           {loan.document_attachment && (
-                            <a
-                              href={loanService.getAttachmentDownloadUrl(loan.loan_id)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border border-slate-300 rounded text-slate-700 hover:bg-slate-100 transition"
-                            >
-                              <Paperclip className="w-3.5 h-3.5" />
-                              {t('loans.downloadAttachment')}
-                            </a>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setAttachmentPreview({ loanId: loan.loan_id, loanType: loan.loan_type })}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border border-slate-300 rounded text-slate-700 hover:bg-slate-100 transition"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                View Document
+                              </button>
+                              <a
+                                href={loanService.getAttachmentDownloadUrl(loan.loan_id)}
+                                download
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold border border-slate-300 rounded text-slate-700 hover:bg-slate-100 transition"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                Download
+                              </a>
+                            </>
                           )}
                           <Button
                             size="sm"
@@ -399,11 +537,46 @@ export default function OfficerLoanDrawer({
                       </Button>
                     )}
 
+                    <div ref={historyColumnsRef} className="relative">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        icon={<Columns3 className="w-3.5 h-3.5" />}
+                        onClick={() => setHistoryColumnsOpen((open) => !open)}
+                        aria-expanded={historyColumnsOpen}
+                        aria-haspopup="true"
+                      >
+                        Columns
+                      </Button>
+                      {historyColumnsOpen && (
+                        <div className="absolute right-0 z-40 mt-1 max-h-72 w-56 overflow-y-auto rounded border border-slate-200 bg-white p-3 shadow-lg">
+                          <p className="mb-2 border-b border-slate-200 pb-2 text-[11px] font-bold uppercase text-slate-500">
+                            Visible columns
+                          </p>
+                          {historyColumnOptions.map((column) => (
+                            <label key={column.key} className="flex cursor-pointer items-center gap-2 py-1.5 text-xs text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={visibleHistoryColumns[column.key]}
+                                onChange={() => setVisibleHistoryColumns((current) => ({
+                                  ...current,
+                                  [column.key]: !current[column.key],
+                                }))}
+                                className="h-4 w-4 accent-gov-primary"
+                              />
+                              {column.label}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     <Button
                       size="sm"
                       variant="outline"
                       icon={<Download className="w-3.5 h-3.5" />}
                       onClick={handleDownloadHistoryCSV}
+                      disabled={Object.values(visibleHistoryColumns).every((visible) => !visible)}
                     >
                       {t('loans.exportCsv')}
                     </Button>
@@ -413,20 +586,20 @@ export default function OfficerLoanDrawer({
                       variant="primary"
                       icon={<Printer className="w-3.5 h-3.5" />}
                       onClick={handlePrint}
+                      disabled={Object.values(visibleHistoryColumns).every((visible) => !visible)}
                     >
                       {t('loans.printSavePdf')}
                     </Button>
 
                     {activeLoan?.document_attachment && (
-                      <a
-                        href={loanService.getAttachmentDownloadUrl(activeLoan.loan_id)}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => setAttachmentPreview({ loanId: activeLoan.loan_id, loanType: activeLoan.loan_type })}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded text-slate-700 hover:bg-slate-100 transition"
                       >
-                        <Paperclip className="w-3.5 h-3.5" />
-                        {t('loans.downloadAttachment')}
-                      </a>
+                        <Eye className="w-3.5 h-3.5" />
+                        View Document
+                      </button>
                     )}
                   </div>
                 </div>
@@ -500,13 +673,13 @@ export default function OfficerLoanDrawer({
                     <table className="w-full min-w-[680px] border-separate border-spacing-0 text-left text-xs">
                       <thead>
                         <tr className="border-b-2 border-amber-400 bg-gov-navy text-slate-100 font-bold uppercase">
-                          <th className="border-r border-white/10 px-2.5 py-3">{t('loans.installmentNo')}</th>
-                          <th className="border-r border-white/10 px-2.5 py-3">{t('loans.paymentDate')}</th>
-                          <th className="border-r border-white/10 px-2.5 py-3 text-right">{t('loans.openingAdvance')}</th>
-                          <th className="border-r border-white/10 px-2.5 py-3 text-right">{t('loans.recovery')}</th>
-                          <th className="border-r border-white/10 px-2.5 py-3 text-right">{t('loans.balance')}</th>
-                          <th className="border-r border-white/10 px-2.5 py-3 text-right">{t('loans.interest')}</th>
-                          <th className="px-2.5 py-3 text-center">{t('common.status')}</th>
+                          {visibleHistoryColumns.installment && <th className="border-r border-white/10 px-2.5 py-3">{t('loans.installmentNo')}</th>}
+                          {visibleHistoryColumns.payment_date && <th className="border-r border-white/10 px-2.5 py-3">{t('loans.paymentDate')}</th>}
+                          {visibleHistoryColumns.opening_advance && <th className="border-r border-white/10 px-2.5 py-3 text-right">{t('loans.openingAdvance')}</th>}
+                          {visibleHistoryColumns.recovery && <th className="border-r border-white/10 px-2.5 py-3 text-right">{t('loans.recovery')}</th>}
+                          {visibleHistoryColumns.balance && <th className="border-r border-white/10 px-2.5 py-3 text-right">{t('loans.balance')}</th>}
+                          {visibleHistoryColumns.interest && <th className="border-r border-white/10 px-2.5 py-3 text-right">{t('loans.interest')}</th>}
+                          {visibleHistoryColumns.status && <th className="px-2.5 py-3 text-center">{t('common.status')}</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -525,28 +698,20 @@ export default function OfficerLoanDrawer({
                               openingBalance = Number(pay.balance)
                               return (
                                 <tr key={pay.pay_id} className="border-b border-slate-100 even:bg-slate-50/80 hover:bg-blue-50/70">
-                                  <td className="border-r border-slate-100 px-2.5 py-2.5 font-mono font-semibold text-slate-700">
-                                    {idx + 1}
-                                  </td>
-                                  <td className="border-r border-slate-100 px-2.5 py-2.5 text-slate-700">{pay.payment_date}</td>
-                                  <td className="border-r border-slate-100 px-2.5 py-2.5 text-right font-medium text-slate-800">
-                                    {formatINR(currentAdvance)}
-                                  </td>
-                                  <td className="px-3 py-2.5 text-right font-semibold text-green-700">
-                                    {formatINR(pay.recovered_amount)}
-                                  </td>
-                                  <td className="px-3 py-2.5 text-right font-semibold text-slate-900">
-                                    {formatINR(pay.balance)}
-                                  </td>
-                                  <td className="px-3 py-2.5 text-right text-slate-700">
-                                    {formatINR(pay.total_interest)}
-                                  </td>
-                                  <td className="px-3 py-2.5 text-center">
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] font-semibold bg-green-100 text-green-800">
-                                      <CheckCircle2 className="w-3 h-3" />
-                                      {pay.status}
-                                    </span>
-                                  </td>
+                                  {visibleHistoryColumns.installment && <td className="border-r border-slate-100 px-2.5 py-2.5 font-mono font-semibold text-slate-700">{idx + 1}</td>}
+                                  {visibleHistoryColumns.payment_date && <td className="border-r border-slate-100 px-2.5 py-2.5 text-slate-700">{pay.payment_date}</td>}
+                                  {visibleHistoryColumns.opening_advance && <td className="border-r border-slate-100 px-2.5 py-2.5 text-right font-medium text-slate-800">{formatINR(currentAdvance)}</td>}
+                                  {visibleHistoryColumns.recovery && <td className="border-r border-slate-100 px-2.5 py-2.5 text-right font-semibold text-green-700">{formatINR(pay.recovered_amount)}</td>}
+                                  {visibleHistoryColumns.balance && <td className="border-r border-slate-100 px-2.5 py-2.5 text-right font-semibold text-slate-900">{formatINR(pay.balance)}</td>}
+                                  {visibleHistoryColumns.interest && <td className="border-r border-slate-100 px-2.5 py-2.5 text-right text-slate-700">{formatINR(pay.total_interest)}</td>}
+                                  {visibleHistoryColumns.status && (
+                                    <td className="px-2.5 py-2.5 text-center">
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] font-semibold bg-green-100 text-green-800">
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        {pay.status}
+                                      </span>
+                                    </td>
+                                  )}
                                 </tr>
                               )
                             })
@@ -559,6 +724,49 @@ export default function OfficerLoanDrawer({
               </div>
             )}
           </div>
+
+      {attachmentPreview && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
+            onClick={() => setAttachmentPreview(null)}
+          />
+          <div className="relative flex h-[min(88vh,850px)] w-[min(92vw,1100px)] flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-gov-navy px-5 py-3 text-white">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase text-amber-300">Loan Document Preview</p>
+                <p className="truncate text-sm font-semibold">
+                  {user?.full_name} • {attachmentPreview.loanType}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAttachmentPreview(null)}
+                className="ml-4 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded text-slate-200 hover:bg-white/10 hover:text-white"
+                aria-label="Close document preview"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 bg-slate-100">
+              <iframe
+                src={loanService.getAttachmentViewUrl(attachmentPreview.loanId)}
+                title="Loan document preview"
+                className="h-full w-full border-0"
+              />
+            </div>
+            <div className="flex justify-end border-t border-slate-200 bg-white px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setAttachmentPreview(null)}
+                className="rounded-sm border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Close Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
           {/* Drawer Footer */}
           <div className="bg-slate-50 border-t border-slate-200 px-6 py-3 flex items-center justify-between">
