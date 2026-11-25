@@ -19,22 +19,22 @@ export const DataTable = ({
   const totalPages = totalPagesProp ?? Math.max(1, Math.ceil(total / size));
 
   return (
-    <div className={`min-w-0 overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm ${className}`}>
+    <div className={`min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,41,66,0.06)] ${className}`}>
       <div className="table-scroll">
-        <table className="w-full min-w-[42rem] border-collapse text-left text-sm">
+        <table className="w-full min-w-[42rem] border-separate border-spacing-0 text-left text-sm">
           <thead>
-            <tr className="border-b-2 border-amber-400 bg-gov-navy text-[11px] font-bold uppercase text-white">
+            <tr className="border-b-2 border-amber-400 bg-gov-navy text-[11px] font-bold uppercase text-slate-100">
               {columns.map((col, idx) => (
                 <th
                   key={idx}
-                  className={`whitespace-nowrap px-4 py-4 leading-tight tracking-wide ${col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : 'text-left'} ${col.className || ''}`}
+                  className={`border-r border-white/10 whitespace-nowrap px-3 py-3.5 leading-tight tracking-wide last:border-r-0 ${col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : 'text-left'} ${col.className || ''}`}
                 >
                   {col.label ?? col.header}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 text-slate-800">
+          <tbody className="text-slate-800">
             {loading ? (
               <tr>
                 <td colSpan={columns.length} className="px-4 py-12 text-center text-slate-500">
@@ -55,11 +55,11 @@ export const DataTable = ({
               </tr>
             ) : (
               data.map((row, rowIdx) => (
-                <tr key={rowIdx} className="group transition-colors even:bg-slate-50/70 hover:bg-blue-50/80">
+                <tr key={rowIdx} className="group border-b border-slate-100 transition-colors even:bg-slate-50/80 hover:bg-blue-50/70">
                   {columns.map((col, colIdx) => (
                     <td
                       key={colIdx}
-                      className={`px-4 py-3.5 align-middle text-sm text-slate-700 transition-colors group-hover:text-slate-900 ${col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : 'text-left'} ${col.className || ''}`}
+                      className={`border-b border-slate-100 border-r border-slate-100/80 px-3 py-3 align-middle text-sm text-slate-700 transition-colors group-hover:text-slate-950 last:border-r-0 ${col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : 'text-left'} ${col.className || ''}`}
                     >
                       {col.render ? col.render(row, rowIdx) : row[col.key ?? col.accessor]}
                     </td>

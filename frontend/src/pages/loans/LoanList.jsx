@@ -506,28 +506,28 @@ export default function LoanList() {
       </div>
 
       {/* Operational Loan Records Table */}
-      <div className="min-w-0 overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
+      <div className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,41,66,0.06)]">
         <div className="table-scroll max-h-[calc(100vh-300px)] overflow-auto">
-          <table className="w-full min-w-[940px] border-collapse text-left text-sm">
+          <table className="w-full min-w-[940px] border-separate border-spacing-0 text-left text-sm">
             <thead>
-              <tr className="bg-gov-navy text-white text-xs font-semibold uppercase tracking-wide">
-                {visibleCols.sl_no && <th className="whitespace-nowrap px-2.5 py-2.5">{t('loans.slNo')}</th>}
-                <th className="min-w-[150px] whitespace-nowrap px-2.5 py-2.5">{t('loans.officerName')}</th>
-                {visibleCols.rank && <th className="whitespace-nowrap px-2.5 py-2.5">{t('loans.rank')}</th>}
-                {visibleCols.kgid && <th className="whitespace-nowrap px-2.5 py-2.5">{t('loans.kgid')}</th>}
-                {visibleCols.station && <th className="whitespace-nowrap px-2.5 py-2.5">{t('loans.station')}</th>}
-                {visibleCols.loan_type && <th className="whitespace-nowrap px-2.5 py-2.5">{t('loans.loanType')}</th>}
-                {visibleCols.sanction_date && <th className="whitespace-nowrap px-2.5 py-2.5">{t('loans.sanctionDate')}</th>}
-                {visibleCols.sanction_amount && <th className="whitespace-nowrap px-2.5 py-2.5 text-right">{t('loans.sanctionAmount')}</th>}
-                {visibleCols.monthly_interest && <th className="whitespace-nowrap px-2.5 py-2.5 text-right">{t('loans.monthlyInterest')}</th>}
-                {visibleCols.recovered && <th className="whitespace-nowrap px-2.5 py-2.5 text-right">{t('loans.recoveredAmount')}</th>}
-                {visibleCols.outstanding && <th className="whitespace-nowrap px-2.5 py-2.5 text-right">{t('loans.outstandingBalance')}</th>}
-                {visibleCols.installments && <th className="whitespace-nowrap px-2.5 py-2.5 text-center">{t('loans.installments')}</th>}
-                {visibleCols.status && <th className="whitespace-nowrap px-2.5 py-2.5 text-center">{t('common.status')}</th>}
-                <th className="whitespace-nowrap px-2.5 py-2.5 text-center">{t('common.actions')}</th>
+              <tr className="border-b-2 border-amber-400 bg-gov-navy text-xs font-bold uppercase tracking-wide text-slate-100">
+                {visibleCols.sl_no && <th className="border-r border-white/10 whitespace-nowrap px-2.5 py-3">{t('loans.slNo')}</th>}
+                <th className="min-w-[150px] border-r border-white/10 whitespace-nowrap px-2.5 py-3">{t('loans.officerName')}</th>
+                {visibleCols.rank && <th className="border-r border-white/10 whitespace-nowrap px-2.5 py-3">{t('loans.rank')}</th>}
+                {visibleCols.kgid && <th className="border-r border-white/10 whitespace-nowrap px-2.5 py-3">{t('loans.kgid')}</th>}
+                {visibleCols.station && <th className="border-r border-white/10 whitespace-nowrap px-2.5 py-3">{t('loans.station')}</th>}
+                {visibleCols.loan_type && <th className="border-r border-white/10 whitespace-nowrap px-2.5 py-3">{t('loans.loanType')}</th>}
+                {visibleCols.sanction_date && <th className="border-r border-white/10 whitespace-nowrap px-2.5 py-3">{t('loans.sanctionDate')}</th>}
+                {visibleCols.sanction_amount && <th className="border-r border-white/10 whitespace-nowrap px-2.5 py-3 text-right">{t('loans.sanctionAmount')}</th>}
+                {visibleCols.monthly_interest && <th className="border-r border-white/10 whitespace-nowrap px-2.5 py-3 text-right">{t('loans.monthlyInterest')}</th>}
+                {visibleCols.recovered && <th className="border-r border-white/10 whitespace-nowrap px-2.5 py-3 text-right">{t('loans.recoveredAmount')}</th>}
+                {visibleCols.outstanding && <th className="border-r border-white/10 whitespace-nowrap px-2.5 py-3 text-right">{t('loans.outstandingBalance')}</th>}
+                {visibleCols.installments && <th className="border-r border-white/10 whitespace-nowrap px-2.5 py-3 text-center">{t('loans.installments')}</th>}
+                {visibleCols.status && <th className="border-r border-white/10 whitespace-nowrap px-2.5 py-3 text-center">{t('common.status')}</th>}
+                <th className="whitespace-nowrap px-2.5 py-3 text-center">{t('common.actions')}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 text-slate-800">
+            <tbody className="text-slate-800">
               {loading ? (
                 <tr>
                   <td colSpan={14} className="px-4 py-12 text-center text-slate-500">
@@ -551,33 +551,33 @@ export default function LoanList() {
                   <tr
                     key={loan.loan_id}
                     onClick={() => openHistoryDrawer(loan)}
-                    className="hover:bg-blue-50/40 transition-colors cursor-pointer"
+                    className="group cursor-pointer border-b border-slate-100 even:bg-slate-50/80 transition-colors hover:bg-blue-50/70"
                   >
                     {visibleCols.sl_no && (
-                      <td className="whitespace-nowrap px-2.5 py-2.5 text-xs text-slate-500 font-mono">
+                      <td className="border-r border-slate-100 whitespace-nowrap px-2.5 py-2.5 text-xs text-slate-500 font-mono">
                         {(page - 1) * PAGE_SIZE + idx + 1}
                       </td>
                     )}
-                    <td className="max-w-[220px] whitespace-nowrap px-2.5 py-2.5 font-semibold text-slate-900">
+                    <td className="max-w-[220px] border-r border-slate-100 whitespace-nowrap px-2.5 py-2.5 font-semibold text-slate-900">
                       {loan.full_name}
                     </td>
                     {visibleCols.rank && (
-                      <td className="whitespace-nowrap px-2.5 py-2.5 text-xs text-slate-700">{loan.designation}</td>
+                      <td className="border-r border-slate-100 whitespace-nowrap px-2.5 py-2.5 text-xs text-slate-700">{loan.designation}</td>
                     )}
                     {visibleCols.kgid && (
-                      <td className="whitespace-nowrap px-2.5 py-2.5 font-mono text-xs text-slate-700">{loan.kgid}</td>
+                      <td className="border-r border-slate-100 whitespace-nowrap px-2.5 py-2.5 font-mono text-xs text-slate-700">{loan.kgid}</td>
                     )}
                     {visibleCols.station && (
-                      <td className="whitespace-nowrap px-2.5 py-2.5 text-xs text-slate-700">{loan.station_name}</td>
+                      <td className="border-r border-slate-100 whitespace-nowrap px-2.5 py-2.5 text-xs text-slate-700">{loan.station_name}</td>
                     )}
                     {visibleCols.loan_type && (
                       <td className="whitespace-nowrap px-2.5 py-2.5 text-xs font-medium text-slate-800">{loan.loan_type}</td>
                     )}
                     {visibleCols.sanction_date && (
-                      <td className="whitespace-nowrap px-2.5 py-2.5 text-xs text-slate-700">{loan.sanction_date}</td>
+                      <td className="border-r border-slate-100 whitespace-nowrap px-2.5 py-2.5 text-xs text-slate-700">{loan.sanction_date}</td>
                     )}
                     {visibleCols.sanction_amount && (
-                      <td className="whitespace-nowrap px-2.5 py-2.5 text-right font-semibold text-slate-900">
+                      <td className="border-r border-slate-100 whitespace-nowrap px-2.5 py-2.5 text-right font-semibold text-slate-900">
                         {formatINR(loan.sanction_amount)}
                       </td>
                     )}
@@ -668,7 +668,7 @@ export default function LoanList() {
 
         {/* Pagination Footer */}
         {total > 0 && (
-          <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
+          <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 shadow-[0_-4px_12px_rgba(15,41,66,0.03)]">
             <div>
               {t('common.showingOf', { count: loans.length, total })}
             </div>
