@@ -12,6 +12,21 @@ export const memberService = {
     return response.data;
   },
 
+  getAllMembers: async ({ search = '', ps_id = '', status = '' } = {}) => {
+    const size = 100;
+    const firstPage = await memberService.getMembers({ page: 1, size, search, ps_id, status });
+    const items = firstPage.items ?? firstPage.data ?? [];
+    const pageCount = Math.ceil((firstPage.total ?? items.length) / size);
+    if (pageCount <= 1) return items;
+
+    const remainingPages = await Promise.all(
+      Array.from({ length: pageCount - 1 }, (_, index) =>
+        memberService.getMembers({ page: index + 2, size, search, ps_id, status }),
+      ),
+    );
+    return items.concat(...remainingPages.map((result) => result.items ?? result.data ?? []));
+  },
+
   // GET /api/v1/users/{kgid}
   getMemberByKgid: async (kgid) => {
     const response = await api.get(`/api/v1/users/${encodeURIComponent(kgid)}`);
