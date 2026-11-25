@@ -77,6 +77,7 @@ from app.models.user import User
 from app.schemas.auth import AdminLoginRequest, ChangePasswordRequest
 from app.schemas.police_station import PoliceStationCreate, PoliceStationUpdate
 from app.schemas.user import UserCreate, UserStatusUpdate, UserUpdate
+from app.models.enums import DocTypeEnum
 
 from app.services import auth_service, police_station_service, user_service
 from app.dependencies.auth import get_current_admin, require_password_changed
@@ -358,12 +359,28 @@ def run_all_tests():
         settings.UPLOAD_DIR = upload_dir
         try:
             upload = StarletteUploadFile(filename="membership.pdf", file=io.BytesIO(b"%PDF-1.4 test"))
-            uploaded = users.upload_member_documents("KGID-88390", [upload], ready_admin, db)
+            uploaded = users.upload_member_documents(
+                "KGID-88390", [upload], DocTypeEnum.MEMBERSHIP, ready_admin, db
+            )
             assert len(uploaded) == 1
+            assert uploaded[0].original_filename == "Santosh_Kumar_Updated_membership_1.pdf"
             listed_documents = users.list_member_documents("KGID-88390", ready_admin, db)
-            assert listed_documents[0].original_filename == "membership.pdf"
+            assert listed_documents[0].original_filename == "Santosh_Kumar_Updated_membership_1.pdf"
             download = users.download_member_document("KGID-88390", uploaded[0].doc_id, ready_admin, db)
             assert Path(download.path).read_bytes() == b"%PDF-1.4 test"
+
+            second_upload = StarletteUploadFile(filename="membership-copy.pdf", file=io.BytesIO(b"%PDF-1.4 copy"))
+            second_membership = users.upload_member_documents(
+                "KGID-88390", [second_upload], DocTypeEnum.MEMBERSHIP, ready_admin, db
+            )[0]
+            assert second_membership.original_filename == "Santosh_Kumar_Updated_membership_2.pdf"
+
+            loan_upload = StarletteUploadFile(filename="loan-form.pdf", file=io.BytesIO(b"%PDF-1.4 loan"))
+            loan_document = users.upload_member_documents(
+                "KGID-88390", [loan_upload], DocTypeEnum.LOAN_APPLICATION, ready_admin, db
+            )[0]
+            assert loan_document.original_filename == "Santosh_Kumar_Updated_loan_application_1.pdf"
+            assert Path(settings.upload_path, loan_document.file_path).is_file()
         finally:
             settings.UPLOAD_DIR = previous_upload_dir
     print("  -> Member update and Active/Inactive changes retained the member record.")

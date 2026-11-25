@@ -4,7 +4,7 @@ from enum import Enum
 
 class DocTypeEnum(str, Enum):
     """Document category types (2 options)."""
-    MEMBERSHIP = "Membership Application"
+    MEMBERSHIP = "Membership"
     LOAN_APPLICATION = "Loan Application"
 
 

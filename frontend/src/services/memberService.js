@@ -52,9 +52,10 @@ export const memberService = {
   },
 
   // POST /api/v1/users/{kgid}/documents
-  uploadMemberDocuments: async (kgid, files) => {
+  uploadMemberDocuments: async (kgid, files, docType = 'Membership') => {
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));
+    formData.append('doc_type', docType);
     const response = await api.post(
       `/api/v1/users/${encodeURIComponent(kgid)}/documents`,
       formData,

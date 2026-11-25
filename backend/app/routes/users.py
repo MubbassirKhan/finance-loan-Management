@@ -1,9 +1,10 @@
 """API endpoints for Police Personnel Membership operations."""
 from pathlib import Path
+import re
 from typing import Optional, List
-from uuid import uuid4
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.database.connection import get_db
@@ -153,6 +154,7 @@ def update_member_status(
 def upload_member_documents(
     kgid: str,
     files: List[UploadFile] = File(...),
+    doc_type: DocTypeEnum = Form(DocTypeEnum.MEMBERSHIP),
     admin: Admin = Depends(require_password_changed),
     db: Session = Depends(get_db),
 ):
@@ -172,23 +174,35 @@ def upload_member_documents(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{filename} is empty.")
         if len(content) > max_bytes:
             raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=f"{filename} exceeds the {settings.MAX_UPLOAD_SIZE_MB} MB limit.")
-        prepared.append((filename, Path(filename).suffix.lower(), content))
+        prepared.append((Path(filename).suffix.lower(), content))
 
     upload_root = settings.upload_path.resolve()
     upload_dir = upload_root / "members"
     upload_dir.mkdir(parents=True, exist_ok=True)
+    member_filename = re.sub(r"[^A-Za-z0-9]+", "_", member.full_name).strip("_") or "member"
+    doc_type_name = doc_type.value.lower().replace(" ", "_")
+    sequence = db.query(func.count(Document.doc_id)).filter(
+        Document.kgid == member.kgid,
+        Document.doc_type == doc_type,
+    ).scalar() or 0
     saved_paths = []
     documents = []
     try:
-        for filename, extension, content in prepared:
-            stored_path = upload_dir / f"{uuid4().hex}{extension}"
+        for extension, content in prepared:
+            sequence += 1
+            generated_name = f"{member_filename}_{doc_type_name}_{sequence}{extension}"
+            stored_path = upload_dir / generated_name
+            while stored_path.exists():
+                sequence += 1
+                generated_name = f"{member_filename}_{doc_type_name}_{sequence}{extension}"
+                stored_path = upload_dir / generated_name
             stored_path.write_bytes(content)
             saved_paths.append(stored_path)
             document = Document(
-                doc_type=DocTypeEnum.MEMBERSHIP,
+                doc_type=doc_type,
                 kgid=member.kgid,
                 file_path=str(stored_path.relative_to(upload_root)),
-                original_filename=filename,
+                original_filename=generated_name,
                 file_size_bytes=len(content),
             )
             db.add(document)
