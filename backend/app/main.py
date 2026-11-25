@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import IntegrityError
 from app.core.config import settings
-from app.routes import auth, police_stations, users
+from app.routes import auth, police_stations, users, loans
 
 # Configure logger
 logger = logging.getLogger("uvicorn.error")
@@ -81,3 +81,4 @@ def health_check():
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
 app.include_router(police_stations.router, prefix=settings.API_V1_PREFIX)
 app.include_router(users.router, prefix=settings.API_V1_PREFIX)
+app.include_router(loans.router, prefix=settings.API_V1_PREFIX)
