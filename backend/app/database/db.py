@@ -118,10 +118,10 @@ def execute_statement(statement_sql: str, params: Dict[str, Any] = None) -> int:
 
 
 def check_connection() -> Tuple[bool, str]:
-    """Tests connection to PostgreSQL financeDB and returns status."""
+    """Tests the configured database connection and returns its status."""
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        return True, f"Successfully connected to database '{settings.DB_NAME}' on {settings.DB_HOST}:{settings.DB_PORT}."
+        return True, "Successfully connected to the configured database."
     except Exception as e:
-        return False, f"Failed to connect to database '{settings.DB_NAME}': {str(e)}"
+        return False, f"Failed to connect to the configured database: {str(e)}"

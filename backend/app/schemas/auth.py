@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class AdminLoginRequest(BaseModel):
     """Admin login request payload."""
     username: str = Field(..., min_length=3, max_length=50, description="Administrator username", examples=["admin"])
-    password: str = Field(..., min_length=1, description="Administrator password", examples=["admin@123"])
+    password: str = Field(..., min_length=1, description="Administrator password")
 
 
 class AdminResponse(BaseModel):

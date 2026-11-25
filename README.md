@@ -255,10 +255,10 @@ ENVIRONMENT=development
 PROJECT_NAME="SP Office Membership and Fund Management System"
 API_V1_PREFIX=/api/v1
 
-SECRET_KEY=dev-secret-key-sp-office-membership-fund-mgmt-system-2026-xyz
+SECRET_KEY=REPLACE_WITH_A_RANDOM_SECRET_OF_AT_LEAST_32_CHARACTERS
 
-# PostgreSQL Database Connection (Psycopg 3)
-DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/sp_office_db
+# PostgreSQL Database Connection (Psycopg 3); URL-encode special characters in the password
+DATABASE_URL=postgresql+psycopg://REPLACE_USER:URL_ENCODED_PASSWORD@localhost:5432/REPLACE_DATABASE
 
 # Session Management Settings
 SESSION_COOKIE_NAME=sp_admin_session
@@ -269,8 +269,8 @@ COOKIE_SAMESITE=lax
 COOKIE_HTTPONLY=true
 
 # Initial Admin Credentials (used exclusively for seeding)
-INITIAL_ADMIN_USERNAME=admin
-INITIAL_ADMIN_PASSWORD=admin@123
+INITIAL_ADMIN_USERNAME=REPLACE_WITH_ADMIN_USERNAME
+INITIAL_ADMIN_PASSWORD=REPLACE_WITH_A_UNIQUE_STRONG_PASSWORD
 
 # File Upload Restrictions
 UPLOAD_DIR=uploads
@@ -324,8 +324,7 @@ SP Office Membership & Fund Management System - Database Seeder
       Creating initial administrator 'admin'...
       [OK] Initial administrator created successfully!
            Username: admin
-           Initial Password: admin@123
-           Note: The admin will be prompted to change their password upon first login.
+           The administrator must change the initial password on first login.
 [3/3] Checking default Membership Fee tiers...
       [OK] Default fee tier created (mf_id: 1).
 ======================================================================
@@ -333,7 +332,7 @@ Database seeding completed successfully.
 ======================================================================
 ```
 
-*(If you ever need to reset the admin password back to initial defaults, run `python scripts/seed_admin.py --reset-password`).*
+*(To reset the admin password, first set a new `INITIAL_ADMIN_PASSWORD` in your ignored `.env`, then run `python scripts/seed_admin.py --reset-password`.)*
 
 ---
 
@@ -355,7 +354,7 @@ Once running:
 
 ## 7. Running the Automated Verification Test Suite
 
-A self-contained test suite is included that exercises all 16 critical paths (database creation, admin login, password enforcement, station CRUD, member registration, masking, and logout):
+A self-contained test suite is included that exercises 17 critical paths (database creation, admin login, password enforcement, station CRUD, member registration, document handling, and logout):
 
 ```powershell
 python scripts/test_backend.py
@@ -368,12 +367,12 @@ STARTING SP OFFICE BACKEND FOUNDATION & AUTHENTICATION VERIFICATION SUITE
 ================================================================================
 [TEST 1] Creating database schema in SQLite test engine...
   -> Schema initialized successfully.
-[TEST 2] Seeding initial Administrator (admin / admin@123) and default fee tier...
+[TEST 2] Seeding an in-memory test administrator and default fee tier...
   -> Admin seeded: username='admin', ID=1
   -> Fee tier seeded: mf_id=1, fee=200.00
 [TEST 3] Testing Admin Login with Invalid Password...
   -> Rejected invalid password cleanly with HTTP 401: Invalid username or password.
-[TEST 4] Testing Admin Login with Initial Password (admin@123)...
+[TEST 4] Testing Admin Login with the in-memory test password...
   -> Login successful! Token: ...
   -> Admin must_change_password flag: True
   -> Verified: Session token is stored strictly as SHA-256 hash in DB
@@ -407,7 +406,7 @@ STARTING SP OFFICE BACKEND FOUNDATION & AUTHENTICATION VERIFICATION SUITE
   -> Logout executed: Logged out successfully.
   -> Verified: Revoked session returns HTTP 401: Session not found.
 ================================================================================
-ALL 16 VERIFICATION CHECKS PASSED WITH 100% SUCCESS!
+ALL 17 VERIFICATION CHECKS PASSED WITH 100% SUCCESS!
 ================================================================================
 ```
 
@@ -416,7 +415,7 @@ ALL 16 VERIFICATION CHECKS PASSED WITH 100% SUCCESS!
 ## 8. Admin Authentication & Session Workflow
 
 1. **Initial Login**:
-   - Admin sends POST request to `/api/v1/auth/login` with username `admin` and password `admin@123`.
+  - Admin sends POST request to `/api/v1/auth/login` using the username and password configured for the administrator.
    - The backend checks bcrypt password hash and generates a 256-bit cryptographically random token (`secrets.token_urlsafe(32)`).
    - Only the SHA-256 hash of this token is saved in `admin_sessions`.
    - An `HttpOnly`, `SameSite=lax` cookie named `sp_admin_session` is set on the response (the raw token is also provided in the response body for Swagger / API clients).
@@ -429,7 +428,7 @@ ALL 16 VERIFICATION CHECKS PASSED WITH 100% SUCCESS!
    - Admin calls `POST /api/v1/auth/change-password` with:
      ```json
      {
-       "current_password": "admin@123",
+      "current_password": "YOUR_CONFIGURED_INITIAL_PASSWORD",
        "new_password": "MyStrongAdminPassword@2026",
        "confirm_password": "MyStrongAdminPassword@2026"
      }
@@ -463,7 +462,7 @@ ALL 16 VERIFICATION CHECKS PASSED WITH 100% SUCCESS!
 ```json
 {
   "username": "admin",
-  "password": "admin@123"
+  "password": "YOUR_CONFIGURED_ADMIN_PASSWORD"
 }
 ```
 

@@ -1,5 +1,4 @@
 import os
-import urllib.parse
 from pathlib import Path
 from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,17 +17,10 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
 
     # Security & Cryptography
-    SECRET_KEY: str = "sp-office-dev-secret-key-change-in-production-2026"
+    SECRET_KEY: str
 
-    # Database connection parameters (as configured in pgAdmin / PostgreSQL 18)
-    DB_USER: str = "postgres"
-    DB_PASSWORD: str = "abc@123"
-    DB_HOST: str = "localhost"
-    DB_PORT: int = 5432
-    DB_NAME: str = "financeDB"
-
-    # Optional explicit connection string; if not supplied, auto-built from DB_* parameters
-    DATABASE_URL: Optional[str] = None
+    # Required connection string, supplied through environment or an ignored .env file
+    DATABASE_URL: str
 
     # Session Management
     SESSION_COOKIE_NAME: str = "sp_admin_session"
@@ -39,8 +31,8 @@ class Settings(BaseSettings):
     COOKIE_HTTPONLY: bool = True
 
     # Initial Admin Seeding Credentials
-    INITIAL_ADMIN_USERNAME: str = "admin"
-    INITIAL_ADMIN_PASSWORD: str = "admin@123"
+    INITIAL_ADMIN_USERNAME: Optional[str] = None
+    INITIAL_ADMIN_PASSWORD: Optional[str] = None
 
     # File Upload Restrictions
     UPLOAD_DIR: str = "uploads"
@@ -62,17 +54,11 @@ class Settings(BaseSettings):
 
     @property
     def db_url(self) -> str:
-        """Returns the PostgreSQL connection URL with password safely URL-encoded.
-        
-        Handles special characters in passwords (such as '@' in 'abc@123' -> 'abc%40123')
-        to prevent RFC 3986 URL parsing errors.
-        """
-        if self.DATABASE_URL and self.DATABASE_URL.strip():
-            return self.DATABASE_URL.strip()
-
-        # URL-encode the password to safely escape '@' or other special characters
-        encoded_pw = urllib.parse.quote_plus(self.DB_PASSWORD)
-        return f"postgresql+psycopg://{self.DB_USER}:{encoded_pw}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        """Returns the explicitly configured database URL."""
+        database_url = self.DATABASE_URL.strip()
+        if not database_url:
+            raise ValueError("DATABASE_URL must not be empty.")
+        return database_url
 
     @property
     def cors_origins(self) -> List[str]:

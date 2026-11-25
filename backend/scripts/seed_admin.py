@@ -36,6 +36,11 @@ import app.models  # noqa: F401
 
 def seed_database(reset_password: bool = False) -> None:
     """Creates tables if not present, seeds the single admin account and initial fee tier."""
+    if not settings.INITIAL_ADMIN_USERNAME or not settings.INITIAL_ADMIN_PASSWORD:
+        raise RuntimeError(
+            "Set INITIAL_ADMIN_USERNAME and INITIAL_ADMIN_PASSWORD in the ignored .env file before seeding."
+        )
+
     print("=" * 70)
     print("SP Office Membership & Fund Management System - Database Seeder")
     print("=" * 70)
@@ -63,7 +68,7 @@ def seed_database(reset_password: bool = False) -> None:
                 existing_admin.is_active = True
                 db.add(existing_admin)
                 db.commit()
-                print(f"      [OK] Admin credentials reset to username: '{admin_username}', password: '{admin_password}'.")
+                print(f"      [OK] Admin credentials reset for username: '{admin_username}'.")
                 print("      [NOTE] 'must_change_password' flag has been reset to TRUE.")
             else:
                 print(f"      [INFO] Administrator '{existing_admin.username}' already exists (ID: {existing_admin.admin_id}).")
@@ -80,8 +85,7 @@ def seed_database(reset_password: bool = False) -> None:
             db.commit()
             print(f"      [OK] Initial administrator created successfully!")
             print(f"           Username: {admin_username}")
-            print(f"           Initial Password: {admin_password}")
-            print("           Note: The admin will be prompted to change their password upon first login.")
+            print("           The administrator must change the initial password on first login.")
 
         # 3. Seed default Membership Fee Tier
         print("[3/3] Checking default Membership Fee tiers...")

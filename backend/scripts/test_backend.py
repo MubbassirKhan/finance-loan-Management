@@ -56,6 +56,7 @@ for _dir in _search_dirs:
 
 # Use in-memory SQLite database for testing
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+os.environ.setdefault("SECRET_KEY", "test-only-secret-key-that-is-at-least-32-chars")
 
 from fastapi import Request, Response, HTTPException
 from starlette.datastructures import UploadFile as StarletteUploadFile
@@ -80,6 +81,8 @@ from app.schemas.user import UserCreate, UserStatusUpdate, UserUpdate
 from app.services import auth_service, police_station_service, user_service
 from app.dependencies.auth import get_current_admin, require_password_changed
 from app.routes import auth, police_stations, users
+
+TEST_ADMIN_PASSWORD = "TestOnly!Pass2026"
 
 
 def create_dummy_request(cookies=None, headers=None, client_ip="127.0.0.1"):
@@ -125,10 +128,10 @@ def run_all_tests():
     db = TestingSession()
 
     # 2. Seed Admin & Default Membership Fee
-    print("\n[TEST 2] Seeding initial Administrator (admin / admin@123) and default fee tier...")
+    print("\n[TEST 2] Seeding an in-memory test administrator and default fee tier...")
     initial_admin = Admin(
         username="admin",
-        password_hash=hash_password("admin@123"),
+        password_hash=hash_password(TEST_ADMIN_PASSWORD),
         is_active=True,
         must_change_password=True,
     )
@@ -161,8 +164,8 @@ def run_all_tests():
         print(f"  -> Rejected invalid password cleanly with HTTP 401: {e.detail}")
 
     # 4. Test Admin Login with Correct Initial Password
-    print("\n[TEST 4] Testing Admin Login with Initial Password (admin@123)...")
-    valid_payload = AdminLoginRequest(username="admin", password="admin@123")
+    print("\n[TEST 4] Testing Admin Login with the in-memory test password...")
+    valid_payload = AdminLoginRequest(username="admin", password=TEST_ADMIN_PASSWORD)
     login_result = auth.login(valid_payload, req, res, db)
     assert login_result.admin.username == "admin"
     assert login_result.admin.must_change_password is True
@@ -217,7 +220,7 @@ def run_all_tests():
     print("\n[TEST 8] Testing Password Change to Secure Administrator Password...")
     new_password = "SecureAdmin#2026@SP"
     change_payload = ChangePasswordRequest(
-        current_password="admin@123",
+        current_password=TEST_ADMIN_PASSWORD,
         new_password=new_password,
         confirm_password=new_password,
     )
