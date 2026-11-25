@@ -15,7 +15,8 @@ class LoanCreate(BaseModel):
     sanction_date: date = Field(..., description="Loan sanction date")
     sanction_amount: Decimal = Field(..., gt=0, decimal_places=2, description="Sanctioned loan amount")
     monthly_principal: Decimal = Field(..., ge=0, decimal_places=2, description="Monthly principal recovery")
-    monthly_interest: Decimal = Field(..., ge=0, decimal_places=2, description="Monthly interest amount")
+    monthly_interest: Decimal = Field(..., ge=0, decimal_places=2, description="First monthly cutoff interest")
+    interest_rate: Decimal = Field(..., ge=0, decimal_places=4, description="Annual interest percentage")
     start_month: str = Field(..., min_length=2, max_length=20, description="Repayment start month (e.g. November 2026)")
     end_date: date = Field(..., description="Expected loan end date")
     total_installments: int = Field(..., ge=1, le=360, description="Total number of installments")
@@ -39,6 +40,7 @@ class LoanUpdate(BaseModel):
     sanction_amount: Optional[Decimal] = Field(None, gt=0, decimal_places=2)
     monthly_principal: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
     monthly_interest: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
+    interest_rate: Optional[Decimal] = Field(None, ge=0, decimal_places=4)
     start_month: Optional[str] = Field(None, min_length=2, max_length=20)
     end_date: Optional[date] = None
     total_installments: Optional[int] = Field(None, ge=1, le=360)
@@ -48,22 +50,32 @@ class LoanUpdate(BaseModel):
 
 class LoanPaymentCreate(BaseModel):
     """Payload for recording a loan installment payment."""
-    recovered_amount: Decimal = Field(..., ge=0, decimal_places=2, description="Principal amount recovered")
-    total_interest: Decimal = Field(Decimal("0.00"), ge=0, decimal_places=2, description="Interest paid in this installment")
+    recovered_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2, description="Principal amount recovered")
+    total_interest: Optional[Decimal] = Field(Decimal("0.00"), ge=0, decimal_places=2, description="Interest paid in this installment")
+    paid_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2, description="Combined principal and interest amount paid")
+    installment_number: Optional[int] = Field(None, ge=1, description="Exact installment row to receive")
+    is_paid: bool = Field(True, description="Whether the installment payment is received")
     payment_date: date = Field(..., description="Date of payment")
+    is_paid: bool = Field(True, description="Whether this installment is received")
     status: str = Field("Paid", max_length=30, description="Payment status (Paid, Partial, Waived)")
 
 
 class LoanPaymentResponse(BaseModel):
-    """Loan payment transaction record."""
+    """Loan payment/schedule transaction record."""
     pay_id: int
     kgid: str
     loan_id: int
+    installment_number: int
+    opening_advance: Decimal
     recovered_amount: Decimal
     balance: Decimal
     total_interest: Decimal
+    payable_amount: Decimal
+    paid_amount: Decimal
+    proof_attachment: Optional[str] = None
+    is_paid: bool
     status: str
-    payment_date: date
+    payment_date: Optional[date]
     created_at: datetime
     updated_at: datetime
 
@@ -80,6 +92,7 @@ class LoanResponse(BaseModel):
     sanction_amount: Decimal
     monthly_principal: Decimal
     monthly_interest: Decimal
+    interest_rate: Decimal = Decimal("0.0000")
     start_month: str
     end_date: date
     total_installments: int

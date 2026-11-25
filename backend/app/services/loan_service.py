@@ -1,5 +1,8 @@
 """Service layer for Loan Management and Loan Payment Transactions."""
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
+from datetime import date
+import re
+from calendar import monthrange
 from typing import Optional, Tuple, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, or_, desc
@@ -35,6 +38,7 @@ def _build_loan_dict(
         "sanction_amount": loan.sanction_amount,
         "monthly_principal": loan.monthly_principal,
         "monthly_interest": loan.monthly_interest,
+        "interest_rate": getattr(loan, "interest_rate", Decimal("0.0000")),
         "start_month": loan.start_month,
         "end_date": loan.end_date,
         "total_installments": loan.total_installments,
@@ -66,6 +70,43 @@ def create_loan(db: Session, payload: LoanCreate) -> Tuple[Optional[Loan], str]:
     if not station:
         return None, f"Police Station with ID {target_ps_id} does not exist."
 
+    if payload.monthly_principal <= Decimal("0.00"):
+        return None, "Monthly principal must be greater than zero."
+
+    calculated_installments = int(
+        (payload.sanction_amount / payload.monthly_principal).to_integral_value(rounding="ROUND_CEILING")
+    )
+
+    if payload.total_installments != calculated_installments:
+        return None, f"Total installments must be {calculated_installments} for this sanction and monthly principal."
+
+    start_match = re.match(r"^(\d{4})-(\d{2})(?:-(\d{2}))?$", payload.start_month.strip())
+    if start_match:
+        start_year = int(start_match.group(1))
+        start_month_number = int(start_match.group(2))
+    else:
+        month_match = re.match(r"^([A-Za-z]+)\s+(\d{4})$", payload.start_month.strip())
+        month_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+        if not month_match:
+            return None, "Start month must be YYYY-MM or Month YYYY."
+        try:
+            start_month_number = month_names.index(month_match.group(1).capitalize()) + 1
+        except ValueError:
+            return None, "Invalid start month."
+        start_year = int(month_match.group(2))
+
+    end_month_index = (start_month_number - 1) + (calculated_installments - 1)
+    end_year = start_year + (end_month_index // 12)
+    end_month_number = (end_month_index % 12) + 1
+    calculated_end_date = date(
+        end_year,
+        end_month_number,
+        min(payload.sanction_date.day, monthrange(end_year, end_month_number)[1]),
+    )
+
+    if payload.end_date != calculated_end_date:
+        return None, f"End date must be {calculated_end_date.isoformat()} for this schedule."
+
     if payload.end_date < payload.sanction_date:
         return None, "End date cannot be earlier than sanction date."
 
@@ -77,6 +118,7 @@ def create_loan(db: Session, payload: LoanCreate) -> Tuple[Optional[Loan], str]:
         sanction_amount=payload.sanction_amount,
         monthly_principal=payload.monthly_principal,
         monthly_interest=payload.monthly_interest,
+        interest_rate=payload.interest_rate,
         start_month=payload.start_month,
         end_date=payload.end_date,
         total_installments=payload.total_installments,
@@ -85,6 +127,34 @@ def create_loan(db: Session, payload: LoanCreate) -> Tuple[Optional[Loan], str]:
     )
 
     db.add(new_loan)
+    db.flush()
+
+    opening_balance = new_loan.sanction_amount
+    for installment_number in range(1, new_loan.total_installments + 1):
+        opening_advance = opening_balance
+        recovery_amount = min(new_loan.monthly_principal, opening_advance)
+        cutoff_interest = (
+            opening_advance * new_loan.interest_rate / Decimal("1200")
+        ).quantize(Decimal("0.01"))
+        balance = max(Decimal("0.00"), opening_advance - recovery_amount)
+
+        schedule_row = LoanPayment(
+            kgid=new_loan.kgid,
+            loan_id=new_loan.loan_id,
+            installment_number=installment_number,
+            opening_advance=opening_advance,
+            recovered_amount=recovery_amount,
+            balance=balance,
+            total_interest=cutoff_interest,
+            payable_amount=recovery_amount + cutoff_interest,
+            paid_amount=Decimal("0.00"),
+            is_paid=False,
+            status="Projected",
+            payment_date=None,
+        )
+        db.add(schedule_row)
+        opening_balance = balance
+
     db.commit()
     db.refresh(new_loan)
     return new_loan, ""
@@ -108,6 +178,7 @@ def get_loans(
             func.coalesce(func.sum(LoanPayment.total_interest), Decimal("0.00")).label("total_interest_paid"),
             func.count(LoanPayment.pay_id).label("paid_installments"),
         )
+        .where(LoanPayment.is_paid.is_(True))
         .group_by(LoanPayment.loan_id)
         .subquery()
     )
@@ -185,7 +256,7 @@ def get_loan_by_id(db: Session, loan_id: int) -> Optional[Dict[str, Any]]:
             func.coalesce(func.sum(LoanPayment.total_interest), Decimal("0.00")).label("total_interest_paid"),
             func.count(LoanPayment.pay_id).label("paid_installments"),
         )
-        .where(LoanPayment.loan_id == loan_id)
+        .where(LoanPayment.loan_id == loan_id, LoanPayment.is_paid.is_(True))
         .group_by(LoanPayment.loan_id)
         .subquery()
     )
@@ -228,6 +299,14 @@ def update_loan(db: Session, loan_id: int, payload: LoanUpdate) -> Tuple[Optiona
             value = value.strip()
         setattr(loan, field, value)
 
+    if loan.monthly_principal <= Decimal("0.00"):
+        return None, "Monthly principal must be greater than zero."
+
+    calculated_installments = int(
+        (loan.sanction_amount / loan.monthly_principal).to_integral_value(rounding="ROUND_CEILING")
+    )
+    loan.total_installments = calculated_installments
+
     if loan.end_date < loan.sanction_date:
         return None, "End date cannot be earlier than sanction date."
 
@@ -248,30 +327,74 @@ def record_loan_payment(
 
     prev_recovered = db.execute(
         select(func.coalesce(func.sum(LoanPayment.recovered_amount), Decimal("0.00")))
-        .where(LoanPayment.loan_id == loan_id)
+        .where(LoanPayment.loan_id == loan_id, LoanPayment.is_paid.is_(True))
     ).scalar() or Decimal("0.00")
 
-    new_total_recovered = prev_recovered + payload.recovered_amount
+    opening_balance = max(Decimal("0.00"), loan.sanction_amount - prev_recovered)
+
+    # Cutoff interest: opening balance x annual rate / 12 / 100.
+    if loan.sanction_amount > Decimal("0.00"):
+        annual_rate_percent = getattr(loan, "interest_rate", Decimal("0.0000"))
+        calculated_interest = (
+            opening_balance * annual_rate_percent
+            / Decimal("1200")
+        ).quantize(Decimal("0.01"))
+    else:
+        calculated_interest = Decimal("0.00")
+
+    # The reference schedule always recovers the fixed monthly principal.
+    principal_recovery = min(loan.monthly_principal, opening_balance)
+    new_total_recovered = prev_recovered + principal_recovery
     new_balance = max(Decimal("0.00"), loan.sanction_amount - new_total_recovered)
 
-    payment = LoanPayment(
-        kgid=loan.kgid,
-        loan_id=loan.loan_id,
-        recovered_amount=payload.recovered_amount,
-        balance=new_balance,
-        total_interest=payload.total_interest,
-        status=payload.status.strip(),
-        payment_date=payload.payment_date,
+    schedule_query = select(LoanPayment).where(
+        LoanPayment.loan_id == loan_id,
+        LoanPayment.is_paid.is_(False),
     )
-    db.add(payment)
+    if payload.installment_number is not None:
+        schedule_query = schedule_query.where(
+            LoanPayment.installment_number == payload.installment_number
+        )
+    schedule_row = db.execute(
+        schedule_query.order_by(LoanPayment.installment_number.asc()).limit(1)
+    ).scalar_one_or_none()
+
+    if schedule_row:
+        schedule_row.recovered_amount = principal_recovery if payload.is_paid else Decimal("0.00")
+        schedule_row.balance = new_balance if payload.is_paid else opening_balance
+        schedule_row.total_interest = calculated_interest
+        schedule_row.payable_amount = principal_recovery + calculated_interest
+        schedule_row.paid_amount = (payload.paid_amount or principal_recovery + calculated_interest) if payload.is_paid else Decimal("0.00")
+        schedule_row.is_paid = payload.is_paid
+        schedule_row.status = payload.status.strip() if payload.is_paid else "Not Received"
+        schedule_row.payment_date = payload.payment_date if payload.is_paid else None
+    else:
+        payment = LoanPayment(
+            kgid=loan.kgid,
+            loan_id=loan.loan_id,
+            installment_number=(db.query(LoanPayment).filter_by(loan_id=loan_id).count() + 1),
+            opening_advance=opening_balance,
+            recovered_amount=principal_recovery,
+            balance=new_balance,
+            total_interest=calculated_interest,
+            payable_amount=principal_recovery + calculated_interest,
+            paid_amount=payload.paid_amount or principal_recovery + calculated_interest,
+            is_paid=True,
+            status=payload.status.strip(),
+            payment_date=payload.payment_date,
+        )
+        db.add(payment)
 
     # Update loan status automatically based on remaining balance
-    if new_balance == Decimal("0.00"):
+    if payload.is_paid and new_balance == Decimal("0.00"):
         loan.status = "Closed"
     elif loan.status == "Sanctioned":
         loan.status = "Active"
 
     db.commit()
+    if schedule_row:
+        db.refresh(schedule_row)
+        return schedule_row, ""
     db.refresh(payment)
     return payment, ""
 

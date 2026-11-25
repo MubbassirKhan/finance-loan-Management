@@ -83,6 +83,8 @@ export default function LoanList() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [paymentTargetLoan, setPaymentTargetLoan] = useState(null)
   const [paymentCallback, setPaymentCallback] = useState(null)
+  const [paymentInstallmentNumber, setPaymentInstallmentNumber] = useState(null)
+  const [selectedPaymentProof, setSelectedPaymentProof] = useState(null)
   const [savingPayment, setSavingPayment] = useState(false)
 
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -164,9 +166,9 @@ export default function LoanList() {
       sanction_amount: '',
       monthly_principal: '',
       interest_rate: '0',
-      start_month: new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+      start_month: today,
       end_date: '',
-      total_installments: '12',
+      total_installments: '0',
       document_attachment: '',
       status: 'Active',
     })
@@ -180,7 +182,9 @@ export default function LoanList() {
     setSelectedFile(null)
     const sanctionAmt = Number(loan.sanction_amount || 0)
     const monthlyInt = Number(loan.monthly_interest || 0)
-    const computedRate = sanctionAmt > 0 ? parseFloat(((monthlyInt / sanctionAmt) * 100).toFixed(4)) : 0
+    const computedRate = sanctionAmt > 0
+      ? parseFloat(((monthlyInt / sanctionAmt) * 1200).toFixed(4))
+      : 0
     loanForm.reset({
       kgid: loan.kgid,
       ps_id: String(loan.ps_id),
@@ -212,10 +216,42 @@ export default function LoanList() {
   // Live preview of calculated monthly interest from percentage
   const watchedSanctionAmount = parseFloat(loanForm.watch('sanction_amount') || 0)
   const watchedInterestRate = parseFloat(loanForm.watch('interest_rate') || 0)
+  const watchedMonthlyPrincipal = parseFloat(loanForm.watch('monthly_principal') || 0)
+  const watchedStartMonth = loanForm.watch('start_month')
+  const calculatedInstallments = watchedSanctionAmount > 0 && watchedMonthlyPrincipal > 0
+    ? Math.ceil(watchedSanctionAmount / watchedMonthlyPrincipal)
+    : 0
+
+  useEffect(() => {
+    if (calculatedInstallments > 0) {
+      loanForm.setValue('total_installments', String(calculatedInstallments), { shouldValidate: true })
+
+      if (watchedStartMonth) {
+        const startDate = new Date(`${watchedStartMonth}T00:00:00`)
+        if (!Number.isNaN(startDate.getTime())) {
+          const endDate = new Date(
+            startDate.getFullYear(),
+            startDate.getMonth() + (calculatedInstallments - 1),
+            startDate.getDate(),
+          )
+          const endDateValue = [
+            endDate.getFullYear(),
+            String(endDate.getMonth() + 1).padStart(2, '0'),
+            String(endDate.getDate()).padStart(2, '0'),
+          ].join('-')
+          loanForm.setValue('end_date', endDateValue, { shouldValidate: true })
+        }
+      }
+    } else {
+      loanForm.setValue('total_installments', '0', { shouldValidate: false })
+      loanForm.setValue('end_date', '', { shouldValidate: false })
+    }
+  }, [watchedSanctionAmount, watchedMonthlyPrincipal, watchedStartMonth, calculatedInstallments])
+
   const calculatedMonthlyInterest = Number(
     (((isNaN(watchedSanctionAmount) ? 0 : watchedSanctionAmount) *
       (isNaN(watchedInterestRate) ? 0 : watchedInterestRate)) /
-      100).toFixed(2)
+      1200).toFixed(2)
   )
 
   // Submit Create or Edit Loan
@@ -224,7 +260,7 @@ export default function LoanList() {
     try {
       const sanctionAmt = parseFloat(data.sanction_amount)
       const ratePct = parseFloat(data.interest_rate || 0)
-      const computedMonthlyInterest = Number(((sanctionAmt * ratePct) / 100).toFixed(2))
+      const computedMonthlyInterest = Number(((sanctionAmt * ratePct) / 1200).toFixed(2))
 
       const payload = {
         kgid: data.kgid,
@@ -234,6 +270,7 @@ export default function LoanList() {
         sanction_amount: sanctionAmt,
         monthly_principal: parseFloat(data.monthly_principal),
         monthly_interest: computedMonthlyInterest,
+        interest_rate: ratePct,
         start_month: data.start_month,
         end_date: data.end_date,
         total_installments: parseInt(data.total_installments, 10),
@@ -267,16 +304,47 @@ export default function LoanList() {
   }
 
   // Open Record Payment Modal
-  const openPaymentModal = (loan, onDoneCallback = null, e = null) => {
+  const openPaymentModal = (loan, onDoneCallback = null, e = null, installmentNumber = null) => {
     e?.stopPropagation()
     setPaymentTargetLoan(loan)
+    setPaymentInstallmentNumber(installmentNumber)
+    setSelectedPaymentProof(null)
     setPaymentCallback(() => onDoneCallback)
     const today = new Date().toISOString().split('T')[0]
+    const openingBalance = Number(loan.outstanding_balance || loan.sanction_amount || 0)
+    const sanctionAmount = Number(loan.sanction_amount || 0)
+    const annualRatePercent = Number(loan.interest_rate || 0)
+    const openingInterest = sanctionAmount > 0
+      ? Number(((openingBalance * annualRatePercent) / 1200).toFixed(2))
+      : 0
+    const nextInstallmentNumber = installmentNumber || (Number(loan.paid_installments || 0) + 1)
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December']
+    const start = String(loan.start_month || '').trim()
+    let startMonthIndex = -1
+    let startYear = 0
+
+    const isoMatch = start.match(/^(\d{4})[-/](\d{1,2})/) 
+    const nameMatch = start.match(/^([A-Za-z]+)\s+(\d{4})$/)
+    if (isoMatch) {
+      startYear = Number(isoMatch[1])
+      startMonthIndex = Number(isoMatch[2]) - 1
+    } else if (nameMatch) {
+      startYear = Number(nameMatch[2])
+      const normalizedName = nameMatch[1].replace(/\.$/, '')
+      startMonthIndex = monthNames.findIndex((name) => name.toLowerCase() === normalizedName.toLowerCase() || name.slice(0, 3).toLowerCase() === normalizedName.slice(0, 3).toLowerCase())
+    }
+
+    let dueMonth = today.slice(0, 7)
+    if (startMonthIndex >= 0 && startYear > 0) {
+      const dueDate = new Date(startYear, startMonthIndex + (nextInstallmentNumber - 1), 1)
+      dueMonth = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}`
+    }
+
     paymentForm.reset({
-      recovered_amount: String(loan.monthly_principal || ''),
-      total_interest: String(loan.monthly_interest || '0'),
-      payment_date: today,
+      paid_amount: String(Number(loan.monthly_principal || 0) + openingInterest),
+      payment_month: dueMonth,
       status: 'Paid',
+      is_paid: true,
     })
     setPaymentModalOpen(true)
   }
@@ -285,12 +353,20 @@ export default function LoanList() {
     if (!paymentTargetLoan) return
     setSavingPayment(true)
     try {
-      await loanService.recordPayment(paymentTargetLoan.loan_id, {
-        recovered_amount: parseFloat(data.recovered_amount),
-        total_interest: parseFloat(data.total_interest || 0),
-        payment_date: data.payment_date,
-        status: data.status || 'Paid',
+      const paymentMonth = data.payment_month
+      const payment = await loanService.recordPayment(paymentTargetLoan.loan_id, {
+        paid_amount: parseFloat(data.paid_amount),
+        payment_date: paymentMonth && /^\d{4}-\d{2}$/.test(paymentMonth)
+          ? `${paymentMonth}-01`
+          : new Date().toISOString().slice(0, 10),
+        installment_number: paymentInstallmentNumber,
+        status: data.is_paid ? 'Paid' : 'Not Received',
+        is_paid: data.is_paid !== false,
       })
+
+      if (data.is_paid !== false && selectedPaymentProof) {
+        await loanService.uploadPaymentProof(paymentTargetLoan.loan_id, payment.pay_id, selectedPaymentProof)
+      }
       success(t('loans.paymentSuccess'))
       setPaymentModalOpen(false)
       fetchLoans()
@@ -632,7 +708,7 @@ export default function LoanList() {
                         </button>
                         {loan.status !== 'Closed' && (
                           <button
-                            onClick={(e) => openPaymentModal(loan, null, e)}
+                            onClick={(e) => openPaymentModal(loan, null, e, (loan.paid_installments || 0) + 1)}
                             className="p-1.5 text-green-700 border border-slate-200 rounded hover:bg-green-50 transition"
                             title={t('loans.recordPayment')}
                           >
@@ -786,8 +862,8 @@ export default function LoanList() {
 
             <Input
               label={t('loans.startMonth')}
+              type="date"
               required
-              placeholder="e.g. November 2026"
               error={loanForm.formState.errors.start_month?.message}
               {...loanForm.register('start_month', { required: t('validation.required') })}
             />
@@ -796,6 +872,7 @@ export default function LoanList() {
               label={t('loans.endDate')}
               type="date"
               required
+              readOnly
               error={loanForm.formState.errors.end_date?.message}
               {...loanForm.register('end_date', { required: t('validation.required') })}
             />
@@ -803,9 +880,11 @@ export default function LoanList() {
             <Input
               label={t('loans.totalInstallments')}
               type="number"
+              readOnly
               min="1"
               max="360"
               required
+              helperText={calculatedInstallments > 0 ? `Automatically calculated: ${calculatedInstallments} installments` : 'Enter sanction amount and monthly principal'}
               error={loanForm.formState.errors.total_installments?.message}
               {...loanForm.register('total_installments', { required: t('validation.required') })}
             />
@@ -883,40 +962,53 @@ export default function LoanList() {
       >
         <form onSubmit={paymentForm.handleSubmit(handlePaymentSubmit)} className="space-y-4">
           <Input
-            label={t('loans.recoveredAmount')}
+            label="Payable / Paid Amount (₹)"
             type="number"
             step="0.01"
             min="0"
             required
-            error={paymentForm.formState.errors.recovered_amount?.message}
-            {...paymentForm.register('recovered_amount', { required: t('validation.required') })}
+            helperText="Enter the combined payment including principal and interest."
+            error={paymentForm.formState.errors.paid_amount?.message}
+            {...paymentForm.register('paid_amount', { required: 'Paid amount is required.' })}
           />
+
+          <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            The paid amount will be split automatically into principal recovery and interest.
+          </div>
+
+          <label className="flex items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-gov-primary"
+              {...paymentForm.register('is_paid')}
+            />
+            Payment received
+          </label>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-800 mb-1.5">
+              Payment proof <span className="font-normal text-slate-500">(optional)</span>
+            </label>
+            <input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={(event) => setSelectedPaymentProof(event.target.files?.[0] || null)}
+              className="block w-full rounded-sm border border-slate-300 bg-white px-3 py-2 text-xs text-slate-600 file:mr-3 file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-700"
+            />
+          </div>
+
+          {paymentInstallmentNumber && (
+            <div className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+              Marking installment #{paymentInstallmentNumber} as received
+            </div>
+          )}
 
           <Input
-            label={t('loans.interest')}
-            type="number"
-            step="0.01"
-            min="0"
+            label="Payment Month"
+            type="month"
             required
-            error={paymentForm.formState.errors.total_interest?.message}
-            {...paymentForm.register('total_interest', { required: t('validation.required') })}
-          />
-
-          <Input
-            label={t('loans.paymentDate')}
-            type="date"
-            required
-            error={paymentForm.formState.errors.payment_date?.message}
-            {...paymentForm.register('payment_date', { required: t('validation.required') })}
-          />
-
-          <Select
-            label={t('common.status')}
-            options={[
-              { value: 'Paid', label: 'Paid' },
-              { value: 'Partial', label: 'Partial' },
-            ]}
-            {...paymentForm.register('status')}
+            error={paymentForm.formState.errors.payment_month?.message}
+            {...paymentForm.register('payment_month', { required: t('validation.required') })}
           />
 
           <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">

@@ -42,6 +42,7 @@ class Loan(Base, TimestampMixin):
     sanction_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     monthly_principal: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     monthly_interest: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    interest_rate: Mapped[Decimal] = mapped_column(Numeric(6, 4), nullable=False, default=Decimal("0.0000"), server_default="0")
     start_month: Mapped[str] = mapped_column(String(20), nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     total_installments: Mapped[int] = mapped_column(Integer, nullable=False)

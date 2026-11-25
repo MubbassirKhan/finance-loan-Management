@@ -13,6 +13,7 @@ from app.models.admin import Admin
 from app.models.document import Document
 from app.models.enums import DocTypeEnum
 from app.models.loan import Loan
+from app.models.loan_payment import LoanPayment
 from app.models.user import User
 from app.schemas.loan import (
     LoanCreate,
@@ -165,6 +166,50 @@ def record_payment(
     payment, err = loan_service.record_loan_payment(db, loan_id, payload)
     if not payment:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err)
+    return payment
+
+
+@router.post(
+    "/{loan_id}/payments/{pay_id}/proof",
+    response_model=LoanPaymentResponse,
+    summary="Upload Payment Proof",
+)
+def upload_payment_proof(
+    loan_id: int,
+    pay_id: int,
+    file: UploadFile = File(...),
+    admin: Admin = Depends(require_password_changed),
+    db: Session = Depends(get_db),
+):
+    payment = db.query(LoanPayment).filter(
+        LoanPayment.pay_id == pay_id,
+        LoanPayment.loan_id == loan_id,
+    ).first()
+    if not payment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment record not found.")
+
+    filename = Path(file.filename or "payment_proof").name
+    extension = Path(filename).suffix.lower().lstrip(".")
+    if extension not in settings.extensions_list:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only PDF, JPG, JPEG, and PNG files are allowed.")
+
+    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    content = file.file.read(max_bytes + 1)
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty.")
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Proof file is too large.")
+
+    upload_root = settings.upload_path.resolve()
+    proof_dir = upload_root / "loan_payments"
+    proof_dir.mkdir(parents=True, exist_ok=True)
+    stored_name = f"loan_{loan_id}_installment_{payment.installment_number}_{filename}"
+    stored_path = proof_dir / stored_name
+    stored_path.write_bytes(content)
+
+    payment.proof_attachment = str(stored_path.relative_to(upload_root))
+    db.commit()
+    db.refresh(payment)
     return payment
 
 

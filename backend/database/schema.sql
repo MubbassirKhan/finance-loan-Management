@@ -211,6 +211,7 @@ CREATE TABLE IF NOT EXISTS loans (
     sanction_amount NUMERIC(12, 2) NOT NULL CHECK (sanction_amount > 0),
     monthly_principal NUMERIC(12, 2) NOT NULL CHECK (monthly_principal >= 0),
     monthly_interest NUMERIC(12, 2) NOT NULL CHECK (monthly_interest >= 0),
+    interest_rate NUMERIC(6, 4) NOT NULL DEFAULT 0,
     start_month VARCHAR(20) NOT NULL,
     end_date DATE NOT NULL,
     total_installments INTEGER NOT NULL CHECK (total_installments > 0),

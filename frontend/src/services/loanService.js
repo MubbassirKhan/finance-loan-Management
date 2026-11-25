@@ -38,6 +38,16 @@ export const loanService = {
     return response.data;
   },
 
+  // POST /api/v1/loans/{loan_id}/payments/{pay_id}/proof
+  uploadPaymentProof: async (loanId, payId, file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await api.post(`/api/v1/loans/${loanId}/payments/${payId}/proof`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  },
+
   // GET /api/v1/loans/{loan_id}/payments
   getLoanPayments: async (loanId) => {
     const response = await api.get(`/api/v1/loans/${loanId}/payments`);

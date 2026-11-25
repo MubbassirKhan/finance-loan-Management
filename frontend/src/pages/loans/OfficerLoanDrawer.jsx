@@ -36,7 +36,11 @@ export default function OfficerLoanDrawer({
     opening_advance: true,
     recovery: true,
     balance: true,
-    interest: true,
+    interest_year: true,
+    interest_month: true,
+    payable_amount: true,
+    paid_interest: true,
+    paid_amount: true,
     status: true,
   })
   const historyColumnsRef = useRef(null)
@@ -104,13 +108,17 @@ export default function OfficerLoanDrawer({
     : allPayments
 
   const historyColumnOptions = [
-    { key: 'installment', label: t('loans.installmentNo') },
-    { key: 'payment_date', label: t('loans.paymentDate') },
-    { key: 'opening_advance', label: t('loans.openingAdvance') },
-    { key: 'recovery', label: t('loans.recovery') },
-    { key: 'balance', label: t('loans.balance') },
-    { key: 'interest', label: t('loans.interest') },
-    { key: 'status', label: t('common.status') },
+    { key: 'installment', label: 'No. of installment' },
+    { key: 'payment_date', label: 'Month' },
+    { key: 'opening_advance', label: 'Advance' },
+    { key: 'recovery', label: 'Recovery' },
+    { key: 'balance', label: 'Balance' },
+    { key: 'interest_year', label: 'Interest per Year' },
+    { key: 'interest_month', label: 'Interest per month' },
+    { key: 'payable_amount', label: 'Payable Amount' },
+    { key: 'paid_interest', label: 'Paid Interest' },
+    { key: 'paid_amount', label: 'Paid Amount' },
+    { key: 'status', label: 'Payment Status' },
   ]
 
   const formatNumberForPdf = (val) => {
@@ -136,29 +144,97 @@ export default function OfficerLoanDrawer({
     return total
   })()
 
-  const getHistoryTotals = () => ({
-    installment: loanPayments.length,
-    payment_date: '',
-    opening_advance: openingAdvanceTotal,
-    recovery: loanPayments.reduce((sum, payment) => sum + Number(payment.recovered_amount || 0), 0),
-    balance: activeLoan ? Number(activeLoan.outstanding_balance || 0) : 0,
-    interest: loanPayments.reduce((sum, payment) => sum + Number(payment.total_interest || 0), 0),
-    status: '',
-  })
+  const getAnnualRatePercent = () => {
+    if (!activeLoan) return 0
+    if (Number(activeLoan.interest_rate || 0) > 0) {
+      return Number(activeLoan.interest_rate)
+    }
+
+    const sanctionAmount = Number(activeLoan.sanction_amount || 0)
+    const storedMonthlyInterest = Number(activeLoan.monthly_interest || 0)
+    return sanctionAmount > 0
+      ? (storedMonthlyInterest * 12 * 100) / sanctionAmount
+      : 0
+  }
+
+  const getHistoryTotals = () => {
+    const scheduleRows = getHistoryRows()
+    const plannedRecovery = scheduleRows.reduce((sum, row) => sum + Number(String(row.recovery).replace(/,/g, '') || 0), 0)
+    const plannedInterest = scheduleRows.reduce((sum, row) => sum + Number(String(row.interest_month).replace(/,/g, '') || 0), 0)
+    const receivedRows = loanPayments.filter((payment) => payment.is_paid)
+    const recovery = receivedRows.reduce((sum, payment) => sum + Number(payment.recovered_amount || 0), 0)
+    const interest = receivedRows.reduce((sum, payment) => sum + Number(payment.total_interest || 0), 0)
+    const totalInstallments = scheduleRows.length || Number(activeLoan?.total_installments || 0)
+
+    return {
+      installment: totalInstallments,
+      payment_date: '',
+      opening_advance: openingAdvanceTotal,
+      recovery,
+      balance: activeLoan ? Number(activeLoan.outstanding_balance || 0) : 0,
+      interest,
+      plannedRecovery,
+      plannedInterest,
+      averageInterest: totalInstallments > 0 ? plannedInterest / totalInstallments : 0,
+      withInterest: recovery + interest,
+      status: '',
+    }
+  }
 
   const getHistoryRows = () => {
-    let runningAdvance = activeLoan ? Number(activeLoan.sanction_amount) : 0
-    return loanPayments.map((payment, idx) => {
-      const openingAdvance = runningAdvance
-      runningAdvance = Number(payment.balance)
+    if (!activeLoan) return []
+
+    const sanctionAmount = Number(activeLoan.sanction_amount || 0)
+    const annualRatePercent = Number(activeLoan.interest_rate || 0) > 0
+      ? Number(activeLoan.interest_rate)
+      : getAnnualRatePercent()
+    let openingBalance = sanctionAmount
+
+    return loanPayments.map((payment, index) => {
+      const openingAdvance = Number(payment.opening_advance || openingBalance)
+      const recovery = Number(payment.recovered_amount || 0)
+      const balance = Number(payment.balance || 0)
+      const paidInterest = payment.is_paid ? Number(payment.total_interest || 0) : 0
+      const interestPerMonth = (openingAdvance * annualRatePercent) / 1200
+      const interestPerYear = (openingAdvance * annualRatePercent) / 100
+      const paidAmount = recovery + paidInterest
+
+      openingBalance = balance
+
       return {
-        installment: idx + 1,
-        payment_date: payment.payment_date,
+        installment: index + 1,
+        payment_date: (() => {
+          const start = String(activeLoan.start_month || '').trim()
+          const nameMatch = start.match(/^([A-Za-z]+)\s+(\d{4})$/)
+          const isoMatch = start.match(/^([0-9]{4})[-/]([0-9]{1,2})/) 
+          const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December']
+          let year = 0
+          let monthIndex = -1
+
+          if (isoMatch) {
+            year = Number(isoMatch[1])
+            monthIndex = Number(isoMatch[2]) - 1
+          } else if (nameMatch) {
+            year = Number(nameMatch[2])
+            const name = nameMatch[1].replace(/\.$/, '')
+            monthIndex = monthNames.findIndex((item) => item.toLowerCase() === name.toLowerCase() || item.slice(0, 3).toLowerCase() === name.slice(0, 3).toLowerCase())
+          }
+
+          if (year > 0 && monthIndex >= 0) {
+            const date = new Date(year, monthIndex + index, 1)
+            return date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+          }
+          return '-'
+        })(),
         opening_advance: formatNumberForPdf(openingAdvance),
-        recovery: formatNumberForPdf(payment.recovered_amount),
-        balance: formatNumberForPdf(payment.balance),
-        interest: formatNumberForPdf(payment.total_interest),
-        status: payment.status,
+        recovery: formatNumberForPdf(recovery),
+        balance: formatNumberForPdf(balance),
+        interest_year: formatNumberForPdf(interestPerYear),
+        interest_month: formatNumberForPdf(interestPerMonth),
+        payable_amount: formatNumberForPdf(paidAmount),
+        paid_interest: formatNumberForPdf(paidInterest),
+        paid_amount: formatNumberForPdf(paidAmount),
+        status: payment.is_paid ? 'Paid' : 'Projected',
       }
     })
   }
@@ -175,7 +251,11 @@ export default function OfficerLoanDrawer({
       if (column.key === 'opening_advance') return formatNumberForPdf(totals.opening_advance)
       if (column.key === 'recovery') return formatNumberForPdf(totals.recovery)
       if (column.key === 'balance') return formatNumberForPdf(totals.balance)
-      if (column.key === 'interest') return formatNumberForPdf(totals.interest)
+      if (column.key === 'interest_year') return formatNumberForPdf(totals.interest)
+      if (column.key === 'interest_month') return formatNumberForPdf(totals.interest)
+      if (column.key === 'payable_amount') return formatNumberForPdf(totals.recovery + totals.interest)
+      if (column.key === 'paid_interest') return formatNumberForPdf(totals.interest)
+      if (column.key === 'paid_amount') return formatNumberForPdf(totals.recovery + totals.interest)
       if (column.key === 'installment') return `Total: ${totals.installment}`
       return column.key === 'payment_date' ? '' : totals.status
     })
@@ -237,6 +317,8 @@ export default function OfficerLoanDrawer({
       pdf.setTextColor(55, 55, 55)
       pdf.text(`${user.designation || '-'} | ${user.station_name || '-'}`, 36, 118)
 
+      const totals = getHistoryTotals()
+
       const summaryRows = [
         [
           'Loan Scheme', activeLoan.loan_type || '-',
@@ -272,6 +354,21 @@ export default function OfficerLoanDrawer({
         margin: { left: 36, right: 36 },
       })
 
+      autoTable(pdf, {
+        startY: pdf.lastAutoTable.finalY + 18,
+        head: [['Schedule Summary', 'Amount']],
+        body: [
+          ['Total Principal Recovered', formatINRForPdf(totals.recovery)],
+          ['Total Cutoff Interest', formatINRForPdf(totals.interest)],
+          ['Monthly Average Interest', formatINRForPdf(totals.averageInterest)],
+          ['Total Recovered with Interest', formatINRForPdf(totals.withInterest)],
+        ],
+        theme: 'grid',
+        styles: { fontSize: 8.5, cellPadding: 5, textColor: [20, 20, 20], lineWidth: 0.25, lineColor: [180, 180, 180] },
+        headStyles: { fillColor: [255, 255, 255], textColor: [20, 20, 20], fontStyle: 'bold', lineWidth: 0.25, lineColor: [120, 120, 120] },
+        margin: { left: 36, right: 36 },
+      })
+
       const selectedColumns = historyColumnOptions.filter((column) => visibleHistoryColumns[column.key])
       const historyRows = getHistoryRows()
       autoTable(pdf, {
@@ -284,7 +381,11 @@ export default function OfficerLoanDrawer({
             if (column.key === 'opening_advance') return formatNumberForPdf(totals.opening_advance)
             if (column.key === 'recovery') return formatNumberForPdf(totals.recovery)
             if (column.key === 'balance') return formatNumberForPdf(totals.balance)
-            if (column.key === 'interest') return formatNumberForPdf(totals.interest)
+            if (column.key === 'interest_year') return formatNumberForPdf(totals.interest)
+            if (column.key === 'interest_month') return formatNumberForPdf(totals.interest)
+            if (column.key === 'payable_amount') return formatNumberForPdf(totals.withInterest)
+            if (column.key === 'paid_interest') return formatNumberForPdf(totals.interest)
+            if (column.key === 'paid_amount') return formatNumberForPdf(totals.withInterest)
             if (column.key === 'installment') return `Total: ${totals.installment}`
             return ''
           }),
@@ -525,7 +626,7 @@ export default function OfficerLoanDrawer({
                               size="sm"
                               variant="success"
                               icon={<PlusCircle className="w-3.5 h-3.5" />}
-                              onClick={() => onRecordPayment(loan, fetchHistory)}
+                              onClick={() => onRecordPayment(loan, fetchHistory, null, (loan.paid_installments || 0) + 1)}
                             >
                               {t('loans.recordPayment')}
                             </Button>
@@ -592,7 +693,7 @@ export default function OfficerLoanDrawer({
                         size="sm"
                         variant="success"
                         icon={<PlusCircle className="w-3.5 h-3.5" />}
-                        onClick={() => onRecordPayment(activeLoan, fetchHistory)}
+                        onClick={() => onRecordPayment(activeLoan, fetchHistory, null, (activeLoan.paid_installments || 0) + 1)}
                       >
                         {t('loans.recordPayment')}
                       </Button>
@@ -692,7 +793,7 @@ export default function OfficerLoanDrawer({
                       </span>
                       <span className="font-bold text-slate-900 text-sm">
                         {Number(activeLoan.sanction_amount) > 0
-                          ? `${((Number(activeLoan.monthly_interest) / Number(activeLoan.sanction_amount)) * 100).toFixed(4).replace(/\.?0+$/, '')}% (${formatINR(activeLoan.monthly_interest)})`
+                          ? `${((Number(activeLoan.monthly_interest) / Number(activeLoan.sanction_amount)) * 1200).toFixed(4).replace(/\.?0+$/, '')}% (${formatINR(activeLoan.monthly_interest)})`
                           : formatINR(activeLoan.monthly_interest)}
                       </span>
                     </div>
@@ -731,56 +832,92 @@ export default function OfficerLoanDrawer({
                 {/* Transactional History Table */}
                 <div className="overflow-hidden rounded-lg border border-slate-200 shadow-[0_6px_18px_rgba(15,41,66,0.05)]">
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[680px] border-separate border-spacing-0 text-left text-xs">
+                    <table className="w-full min-w-[1180px] border-separate border-spacing-0 text-left text-xs">
                       <thead>
                         <tr className="border-b-2 border-amber-400 bg-gov-navy text-slate-100 font-bold uppercase">
-                          {visibleHistoryColumns.installment && <th className="border-r border-white/10 px-2.5 py-3">{t('loans.installmentNo')}</th>}
-                          {visibleHistoryColumns.payment_date && <th className="border-r border-white/10 px-2.5 py-3">{t('loans.paymentDate')}</th>}
-                          {visibleHistoryColumns.opening_advance && <th className="border-r border-white/10 px-2.5 py-3 text-right">{t('loans.openingAdvance')}</th>}
-                          {visibleHistoryColumns.recovery && <th className="border-r border-white/10 px-2.5 py-3 text-right">{t('loans.recovery')}</th>}
-                          {visibleHistoryColumns.balance && <th className="border-r border-white/10 px-2.5 py-3 text-right">{t('loans.balance')}</th>}
-                          {visibleHistoryColumns.interest && <th className="border-r border-white/10 px-2.5 py-3 text-right">{t('loans.interest')}</th>}
-                          {visibleHistoryColumns.status && <th className="px-2.5 py-3 text-center">{t('common.status')}</th>}
+                          {visibleHistoryColumns.installment && <th className="border-r border-white/10 px-2 py-3 text-center">No.</th>}
+                          {visibleHistoryColumns.payment_date && <th className="border-r border-white/10 px-2 py-3">Month</th>}
+                          {visibleHistoryColumns.opening_advance && <th className="border-r border-white/10 px-2 py-3 text-right">Advance</th>}
+                          {visibleHistoryColumns.recovery && <th className="border-r border-white/10 px-2 py-3 text-right">Recovery</th>}
+                          {visibleHistoryColumns.balance && <th className="border-r border-white/10 px-2 py-3 text-right">Balance</th>}
+                          {visibleHistoryColumns.interest_year && <th className="border-r border-white/10 px-2 py-3 text-right">Interest / Year</th>}
+                          {visibleHistoryColumns.interest_month && <th className="border-r border-white/10 px-2 py-3 text-right">Interest / Month</th>}
+                          {visibleHistoryColumns.payable_amount && <th className="border-r border-white/10 px-2 py-3 text-right">Payable Amount</th>}
+                          {visibleHistoryColumns.paid_interest && <th className="border-r border-white/10 px-2 py-3 text-right">Paid Interest</th>}
+                          {visibleHistoryColumns.paid_amount && <th className="border-r border-white/10 px-2 py-3 text-right">Paid Amount</th>}
+                          {visibleHistoryColumns.status && <th className="px-2 py-3 text-center">Payment Status</th>}
                         </tr>
                       </thead>
                       <tbody>
-                        {loanPayments.length === 0 ? (
-                          <tr>
-                            <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
-                              <Clock className="w-6 h-6 mx-auto mb-1.5 opacity-40" />
-                              {t('loans.noPaymentsYet')}
-                            </td>
+                        {getHistoryRows().map((row) => {
+                          const paidRow = row.status === 'Paid'
+                          const firstUnpaid = getHistoryRows().find((item) => item.status !== 'Paid')
+                          const canReceive = firstUnpaid?.installment === row.installment
+                          return (
+                          <tr key={row.installment} className={`border-b transition-colors ${paidRow ? 'border-emerald-100 bg-emerald-50/70' : canReceive ? 'border-amber-200 bg-amber-50/40 hover:bg-amber-50/80' : 'border-slate-100 bg-slate-50/30 text-slate-500'}`}>
+                            {visibleHistoryColumns.installment && <td className="border-r border-slate-100 px-2 py-2 text-center font-mono font-semibold">{row.installment}</td>}
+                            {visibleHistoryColumns.payment_date && <td className="border-r border-slate-100 px-2 py-2 whitespace-nowrap">{row.payment_date}</td>}
+                            {visibleHistoryColumns.opening_advance && <td className="border-r border-slate-100 px-2 py-2 text-right font-medium">{formatINR(row.opening_advance.replace(/,/g, ''))}</td>}
+                            {visibleHistoryColumns.recovery && <td className="border-r border-slate-100 px-2 py-2 text-right font-semibold text-green-700">{formatINR(row.recovery.replace(/,/g, ''))}</td>}
+                            {visibleHistoryColumns.balance && <td className="border-r border-slate-100 px-2 py-2 text-right font-semibold">{formatINR(row.balance.replace(/,/g, ''))}</td>}
+                            {visibleHistoryColumns.interest_year && <td className="border-r border-slate-100 px-2 py-2 text-right">{formatINR(row.interest_year.replace(/,/g, ''))}</td>}
+                            {visibleHistoryColumns.interest_month && <td className="border-r border-slate-100 px-2 py-2 text-right">{formatINR(row.interest_month.replace(/,/g, ''))}</td>}
+                            {visibleHistoryColumns.payable_amount && <td className="border-r border-slate-100 px-2 py-2 text-right font-semibold">{formatINR(row.payable_amount.replace(/,/g, ''))}</td>}
+                            {visibleHistoryColumns.paid_interest && <td className="border-r border-slate-100 px-2 py-2 text-right">{formatINR(row.paid_interest.replace(/,/g, ''))}</td>}
+                            {visibleHistoryColumns.paid_amount && <td className="border-r border-slate-100 px-2 py-2 text-right font-semibold">{row.paid_amount === '-' ? '-' : formatINR(row.paid_amount.replace(/,/g, ''))}</td>}
+                            {visibleHistoryColumns.status && (
+                              <td className="px-2 py-2 text-center">
+                                <label className="inline-flex items-center gap-1.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={paidRow}
+                                    disabled={!canReceive || paidRow}
+                                    onChange={() => {
+                                      if (canReceive) {
+                                        onRecordPayment?.(activeLoan, fetchHistory, null, row.installment)
+                                      }
+                                    }}
+                                    aria-label={`Installment ${row.installment} received status`}
+                                    className="h-4 w-4 accent-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                  />
+                                  <span className={`text-[10px] font-bold ${paidRow ? 'text-emerald-700' : canReceive ? 'text-amber-700' : 'text-slate-400'}`}>
+                                    {paidRow ? 'Received' : canReceive ? 'Mark Received' : 'Not Received'}
+                                  </span>
+                                </label>
+                              </td>
+                            )}
                           </tr>
-                        ) : (
-                          (() => {
-                            let openingBalance = activeLoan ? Number(activeLoan.sanction_amount) : 0
-                            return loanPayments.map((pay, idx) => {
-                              const currentAdvance = openingBalance
-                              openingBalance = Number(pay.balance)
-                              return (
-                                <tr key={pay.pay_id} className="border-b border-slate-100 even:bg-slate-50/80 hover:bg-blue-50/70">
-                                  {visibleHistoryColumns.installment && <td className="border-r border-slate-100 px-2.5 py-2.5 font-mono font-semibold text-slate-700">{idx + 1}</td>}
-                                  {visibleHistoryColumns.payment_date && <td className="border-r border-slate-100 px-2.5 py-2.5 text-slate-700">{pay.payment_date}</td>}
-                                  {visibleHistoryColumns.opening_advance && <td className="border-r border-slate-100 px-2.5 py-2.5 text-right font-medium text-slate-800">{formatINR(currentAdvance)}</td>}
-                                  {visibleHistoryColumns.recovery && <td className="border-r border-slate-100 px-2.5 py-2.5 text-right font-semibold text-green-700">{formatINR(pay.recovered_amount)}</td>}
-                                  {visibleHistoryColumns.balance && <td className="border-r border-slate-100 px-2.5 py-2.5 text-right font-semibold text-slate-900">{formatINR(pay.balance)}</td>}
-                                  {visibleHistoryColumns.interest && <td className="border-r border-slate-100 px-2.5 py-2.5 text-right text-slate-700">{formatINR(pay.total_interest)}</td>}
-                                  {visibleHistoryColumns.status && (
-                                    <td className="px-2.5 py-2.5 text-center">
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] font-semibold bg-green-100 text-green-800">
-                                        <CheckCircle2 className="w-3 h-3" />
-                                        {pay.status}
-                                      </span>
-                                    </td>
-                                  )}
-                                </tr>
-                              )
-                            })
-                          })()
-                        )}
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 rounded border border-slate-200 bg-slate-50 p-3 text-xs lg:grid-cols-4">
+                  {(() => {
+                    const totals = getHistoryTotals()
+                    return (
+                      <>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase text-slate-500">Total principal recovered</p>
+                          <p className="mt-1 font-bold text-slate-900">{formatINR(totals.recovery)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase text-slate-500">Total cutoff interest</p>
+                          <p className="mt-1 font-bold text-slate-900">{formatINR(totals.interest)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase text-slate-500">Monthly average interest</p>
+                          <p className="mt-1 font-bold text-slate-900">{formatINR(totals.averageInterest)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase text-slate-500">Recovered with interest</p>
+                          <p className="mt-1 font-bold text-slate-900">{formatINR(totals.withInterest)}</p>
+                        </div>
+                      </>
+                    )
+                  })()}
                 </div>
               </div>
             )}

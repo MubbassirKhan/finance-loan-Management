@@ -1,8 +1,8 @@
 """LoanPayment model for tracking installment recoveries and interest."""
 from datetime import date
 from decimal import Decimal
-from typing import TYPE_CHECKING
-from sqlalchemy import Integer, String, Numeric, Date, ForeignKey
+from typing import TYPE_CHECKING, Optional
+from sqlalchemy import Integer, String, Numeric, Date, ForeignKey, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base, TimestampMixin
 
@@ -28,11 +28,17 @@ class LoanPayment(Base, TimestampMixin):
         nullable=False,
         index=True,
     )
+    installment_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    opening_advance: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"))
     recovered_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     balance: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     total_interest: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    status: Mapped[str] = mapped_column(String(30), default="Paid", nullable=False, index=True)
-    payment_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    payable_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"))
+    paid_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0.00"))
+    proof_attachment: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    is_paid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    status: Mapped[str] = mapped_column(String(30), default="Projected", nullable=False, index=True)
+    payment_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="loan_payments")
