@@ -1,7 +1,7 @@
 """API endpoints for Loan Management, Disbursements, and Transactional History."""
 from pathlib import Path
 import re
-from typing import List, Optional
+from typing import List, Literal, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import func
@@ -11,7 +11,7 @@ from app.database.connection import get_db
 from app.dependencies.auth import get_current_admin, require_password_changed
 from app.models.admin import Admin
 from app.models.document import Document
-from app.models.enums import DocTypeEnum
+from app.models.enums import DocTypeEnum, LoanTypeEnum
 from app.models.loan import Loan
 from app.models.loan_payment import LoanPayment
 from app.models.user import User
@@ -125,12 +125,24 @@ def get_user_loan_history(
 def list_monthly_schedules(
     month: str = Query(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
     search: Optional[str] = Query(None),
+    schedule_status: Optional[Literal["Upcoming", "Due", "Received", "Waiting", "Missing"]] = Query(None),
+    ps_id: Optional[int] = Query(None, ge=1),
+    loan_type: Optional[LoanTypeEnum] = Query(None),
     page: int = Query(1, ge=1),
     size: int = Query(100, ge=1, le=500),
     admin: Admin = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    items, total = loan_service.get_monthly_schedules(db, month, search, page, size)
+    items, total = loan_service.get_monthly_schedules(
+        db,
+        month,
+        search,
+        page,
+        size,
+        status_filter=schedule_status,
+        ps_id=ps_id,
+        loan_type=loan_type,
+    )
     return MonthlyScheduleResponse(items=items, total=total, page=page, size=size)
 
 

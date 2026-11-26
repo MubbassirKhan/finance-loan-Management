@@ -137,6 +137,7 @@ class MonthlyScheduleItem(BaseModel):
     status: str
     is_paid: bool
     can_mark: bool
+    next_installment_number: Optional[int] = None
 
 
 class MonthlyScheduleResponse(BaseModel):

@@ -55,9 +55,13 @@ export const loanService = {
   },
 
   // GET /api/v1/loans/schedules
-  getMonthlySchedules: async ({ month, search = '', page = 1, size = 50 }) => {
+  getMonthlySchedules: async ({ month, search = '', page = 1, size = 50, schedule_status = '', ps_id = '', loan_type = '' }) => {
+    const params = { month, search: search.trim(), page, size }
+    if (schedule_status) params.schedule_status = schedule_status
+    if (ps_id) params.ps_id = ps_id
+    if (loan_type) params.loan_type = loan_type
     const response = await api.get('/api/v1/loans/schedules', {
-      params: { month, search: search.trim(), page, size },
+      params,
     })
     return response.data
   },

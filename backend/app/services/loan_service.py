@@ -452,6 +452,9 @@ def get_monthly_schedules(
     search: Optional[str] = None,
     page: int = 1,
     size: int = 100,
+    status_filter: Optional[str] = None,
+    ps_id: Optional[int] = None,
+    loan_type: Optional[LoanTypeEnum] = None,
 ) -> Tuple[List[Dict[str, Any]], int]:
     """Lists each open loan's installment scheduled for a selected month."""
     year, month_number = (int(part) for part in month.split("-"))
@@ -461,6 +464,10 @@ def get_monthly_schedules(
         .join(PoliceStation, Loan.ps_id == PoliceStation.ps_id)
         .where(Loan.status != "Closed")
     )
+    if ps_id:
+        stmt = stmt.where(Loan.ps_id == ps_id)
+    if loan_type:
+        stmt = stmt.where(Loan.loan_type == loan_type)
     if search and search.strip():
         term = f"%{search.strip()}%"
         stmt = stmt.where(or_(
@@ -475,38 +482,52 @@ def get_monthly_schedules(
     eligible = []
     for loan, user, station in loan_rows:
         installment_number = _installment_for_month(loan.start_month, year, month_number)
-        if installment_number and installment_number <= loan.total_installments:
+        if installment_number is not None and 1 <= installment_number <= loan.total_installments:
             eligible.append((loan, user, station, installment_number))
 
-    total = len(eligible)
     offset = (page - 1) * size
+    if status_filter:
+        all_items = []
+        for start in range(0, len(eligible), 200):
+            all_items.extend(_build_monthly_schedule_items(db, eligible[start:start + 200]))
+        if status_filter == "Upcoming":
+            all_items = [item for item in all_items if item["status"] == "Upcoming"]
+        elif status_filter == "Due":
+            all_items = [item for item in all_items if item["status"] == "Due"]
+        elif status_filter == "Received":
+            all_items = [item for item in all_items if item["is_paid"]]
+        elif status_filter == "Waiting":
+            all_items = [item for item in all_items if item["status"].startswith("Waiting for installment #")]
+        elif status_filter == "Missing":
+            all_items = [item for item in all_items if item["status"] == "Schedule missing"]
+        total = len(all_items)
+        return all_items[offset:offset + size], total
+
+    total = len(eligible)
     page_rows = eligible[offset:offset + size]
-    if not page_rows:
-        return [], total
+    return _build_monthly_schedule_items(db, page_rows), total
+
+
+def _build_monthly_schedule_items(
+    db: Session,
+    schedule_rows: List[Tuple[Loan, User, PoliceStation, int]],
+) -> List[Dict[str, Any]]:
+    if not schedule_rows:
+        return []
 
     payment_conditions = [
-        and_(
-            LoanPayment.loan_id == loan.loan_id,
-            LoanPayment.installment_number == installment_number,
-        )
-        for loan, _, _, installment_number in page_rows
+        and_(LoanPayment.loan_id == loan.loan_id, LoanPayment.installment_number == installment_number)
+        for loan, _, _, installment_number in schedule_rows
     ]
-    payments = db.execute(
-        select(LoanPayment).where(or_(*payment_conditions))
-    ).scalars().all()
-    payments_by_schedule = {
-        (payment.loan_id, payment.installment_number): payment
-        for payment in payments
-    }
+    payments = db.execute(select(LoanPayment).where(or_(*payment_conditions))).scalars().all()
+    payments_by_schedule = {(payment.loan_id, payment.installment_number): payment for payment in payments}
+    loan_ids = [loan.loan_id for loan, _, _, _ in schedule_rows]
     paid_recoveries = db.execute(
         select(
             LoanPayment.loan_id,
             func.coalesce(func.sum(LoanPayment.recovered_amount), Decimal("0.00")),
         )
-        .where(
-            LoanPayment.loan_id.in_([loan.loan_id for loan, _, _, _ in page_rows]),
-            LoanPayment.is_paid.is_(True),
-        )
+        .where(LoanPayment.loan_id.in_(loan_ids), LoanPayment.is_paid.is_(True))
         .group_by(LoanPayment.loan_id)
     ).all()
     recovered_by_loan = {loan_id: recovered for loan_id, recovered in paid_recoveries}
@@ -516,7 +537,7 @@ def get_monthly_schedules(
             LoanPayment.installment_number <= installment_number,
             LoanPayment.is_paid.is_(False),
         )
-        for loan, _, _, installment_number in page_rows
+        for loan, _, _, installment_number in schedule_rows
     ]
     prior_unpaid_rows = db.execute(
         select(LoanPayment.loan_id, LoanPayment.installment_number)
@@ -528,7 +549,7 @@ def get_monthly_schedules(
         first_unpaid_by_loan.setdefault(loan_id, installment_number)
 
     items = []
-    for loan, user, station, installment_number in page_rows:
+    for loan, user, station, installment_number in schedule_rows:
         payment = payments_by_schedule.get((loan.loan_id, installment_number))
         can_mark = bool(
             payment
@@ -555,14 +576,15 @@ def get_monthly_schedules(
             "status": (
                 "Paid" if payment and payment.is_paid
                 else "Schedule missing" if not payment
-                else "Waiting for earlier installment" if not can_mark
+                else f"Waiting for installment #{first_unpaid_by_loan[loan.loan_id]}" if not can_mark
                 else "Due" if payment.status in ("Due", "Not Received")
                 else "Upcoming"
             ),
             "is_paid": bool(payment and payment.is_paid),
             "can_mark": can_mark,
+            "next_installment_number": first_unpaid_by_loan.get(loan.loan_id),
         })
-    return items, total
+    return items
 
 
 def bulk_update_monthly_schedules(
