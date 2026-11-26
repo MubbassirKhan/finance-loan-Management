@@ -3,6 +3,9 @@ import enTranslations from '../i18n/en.json';
 import knTranslations from '../i18n/kn.json';
 
 const LanguageContext = createContext();
+const languageContextKey = Symbol.for('sp-office.language-context');
+const sharedLanguageContext = globalThis[languageContextKey] || LanguageContext;
+globalThis[languageContextKey] = sharedLanguageContext;
 
 export const LanguageProvider = ({ children }) => {
   // Default to English as specified in requirements
@@ -62,14 +65,14 @@ export const LanguageProvider = ({ children }) => {
   };
 
   return (
-    <LanguageContext.Provider value={{ language, toggleLanguage, setLanguage, t, isKannada: language === 'kn' }}>
+    <sharedLanguageContext.Provider value={{ language, toggleLanguage, setLanguage, t, isKannada: language === 'kn' }}>
       {children}
-    </LanguageContext.Provider>
+    </sharedLanguageContext.Provider>
   );
 };
 
 export const useLanguage = () => {
-  const context = useContext(LanguageContext);
+  const context = useContext(sharedLanguageContext);
   if (!context) {
     throw new Error('useLanguage must be used within a LanguageProvider');
   }

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Activity, CalendarDays, Clock3, LogOut, Menu, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { useLanguage } from '../../context/LanguageContext';
+import { useLanguage } from '../../context/LanguageContext.jsx';
 
 export const Header = ({ onMenuClick, mobileMenuOpen = false }) => {
   const { admin, logout } = useAuth();

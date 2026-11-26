@@ -16,7 +16,7 @@ import {
   ChevronRight,
   X,
 } from 'lucide-react';
-import { useLanguage } from '../../context/LanguageContext';
+import { useLanguage } from '../../context/LanguageContext.jsx';
 
 export const Sidebar = ({ collapsed = false, onCollapsedChange = () => {}, mobileOpen = false, onNavigate = () => {} }) => {
   const { t } = useLanguage();
@@ -89,8 +89,8 @@ export const Sidebar = ({ collapsed = false, onCollapsedChange = () => {}, mobil
     >
       <div className="flex min-h-16 items-center justify-between border-b border-white/10 px-4 lg:hidden">
         <div>
-          <p className="text-[10px] font-bold uppercase text-amber-300">Navigation</p>
-          <p className="text-sm font-bold text-white">SP Office System</p>
+          <p className="text-[10px] font-bold uppercase text-amber-300">{t('nav.navigation')}</p>
+          <p className="text-sm font-bold text-white">{t('nav.systemName')}</p>
         </div>
         <button
           type="button"
@@ -104,7 +104,7 @@ export const Sidebar = ({ collapsed = false, onCollapsedChange = () => {}, mobil
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-3" aria-label="Main menu">
         <p className={`mb-3 px-3 text-[10px] font-bold uppercase text-slate-400 ${collapsed ? 'lg:sr-only' : ''}`}>
-          {collapsed ? 'Menu' : 'Office services'}
+          {collapsed ? t('nav.menu') : t('nav.officeServices')}
         </p>
         {navItems.map((item) => {
           const Icon = item.icon;
