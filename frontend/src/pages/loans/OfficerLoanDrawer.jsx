@@ -463,7 +463,7 @@ export default function OfficerLoanDrawer({
 
       {/* Slide-over Drawer Panel */}
       <div className="fixed inset-y-0 right-0 flex max-w-full pl-8">
-        <div className="w-screen max-w-4xl bg-white shadow-2xl flex flex-col border-l border-slate-300">
+        <div className="w-screen max-w-6xl bg-white shadow-2xl flex flex-col border-l border-slate-300">
 
           {/* Dark Navy Official Header */}
           <div className="bg-gov-navy text-white px-6 py-4 flex items-start justify-between border-b-4 border-gov-primary">
@@ -861,7 +861,7 @@ export default function OfficerLoanDrawer({
                 )}
 
                 {/* Transactional History Table */}
-                <div className="sticky top-0 z-10 -mx-6 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-200 bg-white px-6 py-2 text-[11px] font-semibold text-slate-700" aria-label="Payment status color legend">
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-200 bg-white py-2 text-[11px] font-semibold text-slate-700" aria-label="Payment status color legend">
                   <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-emerald-400 bg-emerald-200" />Paid</span>
                   <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-red-400 bg-red-200" />Due</span>
                   <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-amber-400 bg-amber-200" />Next upcoming</span>
