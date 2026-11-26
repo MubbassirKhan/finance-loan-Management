@@ -1,13 +1,16 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import {
-  X, Printer, Download, User, HandCoins, FileSpreadsheet,
-  PlusCircle, Shield, CheckCircle2, Clock, Paperclip, Eye, Columns3
+  X, Printer, Download, User, Briefcase, HandCoins, FileSpreadsheet, FileText,
+  PlusCircle, Shield, CheckCircle2, Clock, Paperclip, Eye, Columns3, Landmark, Pencil
 } from 'lucide-react'
 import Button from '../../components/common/Button.jsx'
 import Loading from '../../components/common/Loading.jsx'
+import Modal from '../../components/common/Modal.jsx'
 import { useLanguage } from '../../context/LanguageContext.jsx'
 import { useToast } from '../../context/ToastContext.jsx'
 import loanService from '../../services/loanService.js'
+import memberService from '../../services/memberService.js'
+import MemberCreate from '../members/MemberCreate.jsx'
 
 function formatINR(val) {
   if (val == null || val === '') return '—'
@@ -47,8 +50,12 @@ export default function OfficerLoanDrawer({
   const { error: toastError } = useToast()
 
   const [history, setHistory] = useState(null)
+  const [memberDocuments, setMemberDocuments] = useState([])
   const [loading, setLoading] = useState(false)
   const [markingDueInstallment, setMarkingDueInstallment] = useState(null)
+  const [memberDocumentLoading, setMemberDocumentLoading] = useState(null)
+  const [memberDocumentPreview, setMemberDocumentPreview] = useState(null)
+  const [memberEditOpen, setMemberEditOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('history') // 'membership' | 'loans' | 'history'
   const [selectedLoanId, setSelectedLoanId] = useState(initialLoanId)
   const [historyColumnsOpen, setHistoryColumnsOpen] = useState(false)
@@ -72,8 +79,12 @@ export default function OfficerLoanDrawer({
     if (!kgid) return
     setLoading(true)
     try {
-      const data = await loanService.getUserHistory(kgid)
+      const [data, documents] = await Promise.all([
+        loanService.getUserHistory(kgid),
+        memberService.getMemberDocuments(kgid).catch(() => []),
+      ])
       setHistory(data)
+      setMemberDocuments(documents)
       if (initialLoanId) {
         setSelectedLoanId(initialLoanId)
       } else if (data?.loans?.length > 0) {
@@ -85,6 +96,11 @@ export default function OfficerLoanDrawer({
       setLoading(false)
     }
   }, [kgid, initialLoanId])
+
+  useEffect(() => {
+    if (!memberDocumentPreview?.url) return undefined
+    return () => URL.revokeObjectURL(memberDocumentPreview.url)
+  }, [memberDocumentPreview])
 
   const handleMarkDue = async (installmentNumber) => {
     if (!activeLoan) return
@@ -102,6 +118,37 @@ export default function OfficerLoanDrawer({
       toastError(err.message || t('common.errorSave'))
     } finally {
       setMarkingDueInstallment(null)
+    }
+  }
+
+  const handleViewMemberDocument = async (item) => {
+    setMemberDocumentLoading(item.doc_id)
+    try {
+      const blob = await memberService.downloadMemberDocument(user.kgid, item.doc_id)
+      setMemberDocumentPreview({
+        name: item.original_filename || `Document ${item.doc_id}`,
+        url: URL.createObjectURL(blob),
+      })
+    } catch (err) {
+      toastError(err.message || t('members.viewDocumentError'))
+    } finally {
+      setMemberDocumentLoading(null)
+    }
+  }
+
+  const handleDownloadMemberDocument = async (item) => {
+    try {
+      const blob = await memberService.downloadMemberDocument(user.kgid, item.doc_id)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = item.original_filename || `member-document-${item.doc_id}`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      toastError(err.message || t('members.downloadDocumentError'))
     }
   }
 
@@ -553,34 +600,113 @@ export default function OfficerLoanDrawer({
               </div>
             ) : activeTab === 'membership' ? (
               /* ── TAB 1: Officer Membership & Details ─────────────────── */
-              <div className="space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="border border-slate-200 rounded p-4 bg-slate-50/50 space-y-2.5">
-                    <h4 className="text-xs font-bold text-gov-primary uppercase tracking-wider border-b border-slate-200 pb-1.5">
-                      {t('members.sectionPersonal')}
-                    </h4>
-                    <DetailItem label={t('members.kgid')} value={user.kgid} mono />
-                    <DetailItem label={t('members.fullName')} value={user.full_name} />
+              <div className="space-y-4">
+                <section className="flex flex-wrap items-center justify-between gap-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-blue-200 bg-white text-gov-primary">
+                      <User className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-base font-bold text-slate-900">{user.full_name}</p>
+                      <p className="mt-0.5 truncate text-xs text-slate-600">
+                        {user.designation || '—'} · {user.station_name || activeLoan?.station_name || '—'} · KGID {user.kgid}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className={user.status === 'Active' ? 'badge-active' : 'badge-inactive'}>{user.status}</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      icon={<Pencil className="h-3.5 w-3.5" />}
+                      onClick={() => setMemberEditOpen(true)}
+                    >
+                      {t('members.editMember')}
+                    </Button>
+                  </div>
+                </section>
+
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <DetailSection icon={User} title={t('members.sectionPersonal')}>
                     <DetailItem label={t('members.dob')} value={user.dob} />
                     <DetailItem label={t('members.gender')} value={user.gender} />
-                    <DetailItem label={t('members.caste')} value={user.caste || '—'} />
-                    <DetailItem label={t('members.subCaste')} value={user.sub_caste || '—'} />
-                    <DetailItem label={t('members.category')} value={user.category || '—'} />
-                  </div>
+                    <DetailItem label={t('members.caste')} value={user.caste} />
+                    <DetailItem label={t('members.subCaste')} value={user.sub_caste} />
+                    <DetailItem label={t('members.category')} value={user.category} />
+                  </DetailSection>
 
-                  <div className="border border-slate-200 rounded p-4 bg-slate-50/50 space-y-2.5">
-                    <h4 className="text-xs font-bold text-gov-primary uppercase tracking-wider border-b border-slate-200 pb-1.5">
-                      {t('members.sectionEmployment')} & {t('members.sectionBanking')}
-                    </h4>
+                  <DetailSection icon={Briefcase} title={t('members.sectionEmployment')}>
                     <DetailItem label={t('members.designation')} value={user.designation} />
-                    <DetailItem label={t('members.station')} value={user.station_name} />
-                    <DetailItem label={t('members.shareNo')} value={user.share_number || '—'} />
-                    <DetailItem label={t('members.buckleNo')} value={user.buckle_number || '—'} />
+                    <DetailItem label={t('members.station')} value={user.station_name || activeLoan?.station_name} />
+                    <DetailItem label={t('members.shareNo')} value={user.share_number} />
+                    <DetailItem label={t('members.buckleNo')} value={user.buckle_number} />
+                  </DetailSection>
+
+                  <DetailSection icon={HandCoins} title={t('members.sectionMembership')}>
+                    <DetailItem label={t('members.feeTier')} value={user.mf_id} />
                     <DetailItem label={t('members.financialYear')} value={user.financial_year} />
+                    <DetailItem label={t('members.financialMonth')} value={user.financial_month} />
+                  </DetailSection>
+
+                  <DetailSection icon={Landmark} title={t('members.sectionBanking')}>
                     <DetailItem label={t('members.bankAccount')} value={user.bank_account_number} mono />
                     <DetailItem label={t('members.ifsc')} value={user.ifsc_code} mono />
-                  </div>
+                  </DetailSection>
                 </div>
+
+                <section className="overflow-hidden rounded-md border border-slate-200 bg-white">
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-gov-primary" />
+                      <h4 className="text-xs font-bold uppercase tracking-wide text-gov-primary">
+                        {t('members.documentsTitle')}
+                      </h4>
+                    </div>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">
+                      {memberDocuments.length}
+                    </span>
+                  </div>
+                  {memberDocuments.length === 0 ? (
+                    <p className="px-4 py-4 text-sm text-slate-500">{t('members.noDocuments')}</p>
+                  ) : (
+                    <ul className="divide-y divide-slate-100 px-4">
+                      {memberDocuments.map((item) => (
+                        <li key={item.doc_id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-slate-200 bg-slate-50 text-slate-500">
+                              <FileText className="h-4 w-4" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-slate-800">
+                                {item.original_filename || `Document ${item.doc_id}`}
+                              </p>
+                              <p className="mt-0.5 text-xs text-slate-500">{item.stored_date}</p>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              icon={<Eye className="h-3.5 w-3.5" />}
+                              loading={memberDocumentLoading === item.doc_id}
+                              onClick={() => handleViewMemberDocument(item)}
+                            >
+                              {t('members.viewDocument')}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              icon={<Download className="h-3.5 w-3.5" />}
+                              onClick={() => handleDownloadMemberDocument(item)}
+                            >
+                              {t('members.downloadDocument')}
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
               </div>
             ) : activeTab === 'loans' ? (
               /* ── TAB 2: All Loans of This Officer ────────────────────── */
@@ -1020,6 +1146,32 @@ export default function OfficerLoanDrawer({
         </div>
       )}
 
+      <Modal
+        isOpen={Boolean(memberDocumentPreview)}
+        onClose={() => setMemberDocumentPreview(null)}
+        title={memberDocumentPreview?.name || t('members.documentsTitle')}
+        maxWidth="max-w-5xl"
+      >
+        {memberDocumentPreview && (
+          <iframe
+            title={memberDocumentPreview.name}
+            src={memberDocumentPreview.url}
+            className="h-[70vh] min-h-80 w-full border-0"
+          />
+        )}
+      </Modal>
+
+      {memberEditOpen && user && (
+        <MemberCreate
+          initialKgid={user.kgid}
+          onClose={() => setMemberEditOpen(false)}
+          onSaved={async () => {
+            setMemberEditOpen(false)
+            await fetchHistory()
+          }}
+        />
+      )}
+
           {/* Drawer Footer */}
           <div className="bg-slate-50 border-t border-slate-200 px-6 py-3 flex items-center justify-between">
             <span className="text-xs text-slate-500">
@@ -1035,13 +1187,25 @@ export default function OfficerLoanDrawer({
   )
 }
 
+function DetailSection({ icon: Icon, title, children }) {
+  return (
+    <section className="overflow-hidden rounded-md border border-slate-200 bg-white">
+      <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <Icon className="h-4 w-4 text-gov-primary" />
+        <h4 className="text-xs font-bold uppercase tracking-wide text-gov-primary">{title}</h4>
+      </div>
+      <dl className="grid grid-cols-2 gap-x-5 px-4 py-1 sm:grid-cols-3">{children}</dl>
+    </section>
+  )
+}
+
 function DetailItem({ label, value, mono = false }) {
   return (
-    <div className="flex justify-between gap-3 text-xs">
-      <span className="text-slate-500">{label}:</span>
-      <span className={`font-semibold text-slate-900 text-right ${mono ? 'font-mono' : ''}`}>
-        {value}
-      </span>
+    <div className="min-w-0 border-b border-slate-100 py-2.5">
+      <dt className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
+      <dd className={`mt-1 break-words text-xs font-semibold text-slate-900 ${mono ? 'font-mono' : ''}`}>
+        {value || '—'}
+      </dd>
     </div>
   )
 }
