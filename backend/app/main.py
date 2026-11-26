@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import IntegrityError
 from app.core.config import settings
-from app.routes import auth, police_stations, users, loans, admin_management
+from app.routes import auth, police_stations, users, loans, admin_management, reports
 
 # Configure logger
 logger = logging.getLogger("uvicorn.error")
@@ -83,3 +83,4 @@ app.include_router(police_stations.router, prefix=settings.API_V1_PREFIX)
 app.include_router(users.router, prefix=settings.API_V1_PREFIX)
 app.include_router(loans.router, prefix=settings.API_V1_PREFIX)
 app.include_router(admin_management.router, prefix=settings.API_V1_PREFIX)
+app.include_router(reports.router, prefix=settings.API_V1_PREFIX)
