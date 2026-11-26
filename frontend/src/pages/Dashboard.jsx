@@ -1,15 +1,27 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Activity, AlertCircle, ArrowUpRight, Banknote, Building2, CheckCircle2,
+  Activity, AlertCircle, ArrowRight, ArrowUpRight, Banknote, Building2, CheckCircle2,
   Clock3, Eye, FileText, PlusCircle, TrendingUp, UserPlus, Users
 } from 'lucide-react'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { useLanguage } from '../context/LanguageContext.jsx'
 import memberService from '../services/memberService.js'
+import loanService from '../services/loanService.js'
 import policeStationService from '../services/policeStationService.js'
 
-function StatCard({ icon: Icon, label, value, tone, loading, comingSoon, detail }) {
+const formatCurrency = (value) => new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+}).format(Number(value) || 0)
+
+function StatCard({ icon: Icon, label, value, tone, loading, currency = false, detail }) {
+  const displayValue = currency
+    ? formatCurrency(value)
+    : new Intl.NumberFormat('en-IN').format(value ?? 0)
+
   return (
     <article className={`metric-card ${tone.border}`}>
       <div className="flex items-start justify-between gap-3">
@@ -17,10 +29,13 @@ function StatCard({ icon: Icon, label, value, tone, loading, comingSoon, detail 
           <p className="text-[11px] font-bold uppercase text-slate-500">{label}</p>
           {loading ? (
             <div className="mt-3 h-7 w-20 animate-pulse rounded bg-slate-200" aria-label="Loading" />
-          ) : comingSoon ? (
-            <p className="metric-card-value text-slate-400">—</p>
           ) : (
-            <p className="metric-card-value">{new Intl.NumberFormat('en-IN').format(value ?? 0)}</p>
+            <p
+              className={`metric-card-value${currency ? ' metric-card-currency' : ''}`}
+              title={currency ? displayValue : undefined}
+            >
+              {displayValue}
+            </p>
           )}
         </div>
         <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${tone.icon}`}>
@@ -28,8 +43,8 @@ function StatCard({ icon: Icon, label, value, tone, loading, comingSoon, detail 
         </div>
       </div>
       <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
-        {comingSoon ? <Clock3 className="h-3.5 w-3.5" aria-hidden="true" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />}
-        {loading ? 'Updating records' : comingSoon ? 'Not available yet' : detail}
+        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
+        {loading ? 'Updating records' : detail}
       </p>
     </article>
   )
@@ -42,17 +57,22 @@ function QuickAction({ icon: Icon, label, to, tone, navigate }) {
       onClick={() => navigate(to)}
       className="group flex min-h-[88px] w-full items-center gap-3 rounded-md border border-slate-200 bg-white px-3 py-3 text-left shadow-[0_1px_2px_rgba(16,43,70,0.05)] transition hover:border-gov-primary/40 hover:bg-blue-50/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gov-primary sm:min-h-24 sm:flex-col sm:items-start sm:justify-between sm:px-4"
     >
-      <div className="flex min-w-0 flex-1 items-center gap-3 sm:w-full sm:justify-between">
+      <div className="flex min-w-0 flex-1 items-center gap-3 sm:w-full sm:gap-2 sm:justify-between">
         <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${tone}`}>
           <Icon className="h-4 w-4" aria-hidden="true" />
         </span>
-        <span className="min-w-0 flex-1 text-xs font-bold leading-snug text-slate-800 sm:flex-none sm:text-sm">
+        <span className="min-w-0 flex-1 text-xs font-bold leading-snug text-slate-800 sm:text-sm">
           {label}
         </span>
         <ArrowUpRight className="hidden h-4 w-4 shrink-0 text-slate-400 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-gov-primary sm:block" aria-hidden="true" />
       </div>
     </button>
   )
+}
+
+function currentMonth() {
+  const date = new Date()
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
 export default function Dashboard() {
@@ -63,24 +83,33 @@ export default function Dashboard() {
     totalMembers: null,
     activeMembers: null,
     totalStations: null,
+    sanctionedLoans: null,
+    totalRecoveries: null,
+    pendingBalance: null,
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [scheduleAlerts, setScheduleAlerts] = useState([])
+  const [scheduleLoading, setScheduleLoading] = useState(true)
+  const [scheduleError, setScheduleError] = useState(null)
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
         setLoading(true)
-        // Fetch all three in parallel – use size=1 since we only need total_count
-        const [membersRes, activeMembersRes, stationsRes] = await Promise.all([
+        const [membersRes, activeMembersRes, stationsRes, loans] = await Promise.all([
           memberService.getMembers({ page: 1, size: 1 }),
           memberService.getMembers({ page: 1, size: 1, status: 'Active' }),
           policeStationService.getStations({ page: 1, size: 1 }),
+          loanService.getAllLoans(),
         ])
         setStats({
           totalMembers: membersRes.total_count ?? membersRes.total ?? 0,
           activeMembers: activeMembersRes.total_count ?? activeMembersRes.total ?? 0,
           totalStations: stationsRes.total_count ?? stationsRes.total ?? 0,
+          sanctionedLoans: loans.reduce((total, loan) => total + Number(loan.sanction_amount ?? 0), 0),
+          totalRecoveries: loans.reduce((total, loan) => total + Number(loan.total_recovered ?? 0), 0),
+          pendingBalance: loans.reduce((total, loan) => total + Number(loan.outstanding_balance ?? 0), 0),
         })
       } catch (err) {
         setError(err.message || 'Failed to load dashboard statistics.')
@@ -90,6 +119,40 @@ export default function Dashboard() {
     }
     fetchStats()
   }, [])
+
+  useEffect(() => {
+    let active = true
+    const fetchScheduleAlerts = async () => {
+      try {
+        const month = currentMonth()
+        const [due, missing, waiting] = await Promise.all([
+          loanService.getMonthlySchedules({ month, schedule_status: 'Due', page: 1, size: 1 }),
+          loanService.getMonthlySchedules({ month, schedule_status: 'Missing', page: 1, size: 1 }),
+          loanService.getMonthlySchedules({ month, schedule_status: 'Waiting', page: 1, size: 1 }),
+        ])
+        if (active) {
+          setScheduleAlerts([
+            { key: 'due', label: 'Installments marked due', count: due.total ?? due.items?.length ?? 0 },
+            { key: 'missing', label: 'Installment records missing', count: missing.total ?? missing.items?.length ?? 0 },
+            { key: 'waiting', label: 'Waiting on earlier installments', count: waiting.total ?? waiting.items?.length ?? 0 },
+          ])
+        }
+      } catch (err) {
+        if (active) setScheduleError(err.message || 'Unable to load payment alerts.')
+      } finally {
+        if (active) setScheduleLoading(false)
+      }
+    }
+    fetchScheduleAlerts()
+    return () => { active = false }
+  }, [])
+
+  const sanctionedAmount = Number(stats.sanctionedLoans) || 0
+  const recoveredAmount = Number(stats.totalRecoveries) || 0
+  const recoveryPercent = sanctionedAmount > 0
+    ? Math.min(100, (recoveredAmount / sanctionedAmount) * 100)
+    : 0
+  const activeAlerts = scheduleAlerts.filter((alert) => alert.count > 0)
 
   const statCards = [
     {
@@ -119,23 +182,26 @@ export default function Dashboard() {
     {
       icon: Banknote,
       label: t('dashboard.sanctionedLoans'),
-      value: null,
+      value: stats.sanctionedLoans,
       tone: { border: 'border-l-amber-600', icon: 'bg-amber-50 text-amber-800' },
-      comingSoon: true,
+      currency: true,
+      detail: 'Total principal sanctioned',
     },
     {
       icon: TrendingUp,
       label: t('dashboard.totalRecoveries'),
-      value: null,
+      value: stats.totalRecoveries,
       tone: { border: 'border-l-teal-700', icon: 'bg-teal-50 text-teal-800' },
-      comingSoon: true,
+      currency: true,
+      detail: 'Principal recovered',
     },
     {
       icon: AlertCircle,
       label: t('dashboard.pendingBalance'),
-      value: null,
+      value: stats.pendingBalance,
       tone: { border: 'border-l-rose-700', icon: 'bg-rose-50 text-rose-800' },
-      comingSoon: true,
+      currency: true,
+      detail: 'Outstanding principal',
     },
   ]
 
@@ -207,6 +273,91 @@ export default function Dashboard() {
           ))}
         </div>
       </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section aria-labelledby="repayment-progress-heading" className="section-card min-w-0 p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase text-gov-primary">Loan portfolio</p>
+              <h2 id="repayment-progress-heading" className="mt-0.5 text-base font-bold text-gov-navy">Repayment progress</h2>
+            </div>
+            <TrendingUp className="mt-1 h-5 w-5 shrink-0 text-emerald-700" aria-hidden="true" />
+          </div>
+          {loading ? (
+            <div className="mt-5 h-16 animate-pulse rounded bg-slate-100" aria-label="Loading repayment progress" />
+          ) : (
+            <>
+              <div className="mt-5 flex items-baseline justify-between gap-3">
+                <span className="text-sm font-semibold text-slate-600">Principal recovered</span>
+                <span className="text-lg font-bold tabular-nums text-gov-navy">{recoveryPercent.toFixed(1)}%</span>
+              </div>
+              <div
+                className="mt-2 h-3 overflow-hidden rounded-full bg-slate-100"
+                role="progressbar"
+                aria-label="Principal recovered"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Number(recoveryPercent.toFixed(1))}
+              >
+                <div className="h-full rounded-full bg-emerald-600 transition-[width] duration-500" style={{ width: `${recoveryPercent}%` }} />
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-500">Recovered</p>
+                  <p className="mt-1 truncate text-sm font-bold text-emerald-800" title={formatCurrency(recoveredAmount)}>{formatCurrency(recoveredAmount)}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-500">Remaining</p>
+                  <p className="mt-1 truncate text-sm font-bold text-gov-navy" title={formatCurrency(stats.pendingBalance)}>{formatCurrency(stats.pendingBalance)}</p>
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+
+        <section aria-labelledby="payment-alerts-heading" className="section-card min-w-0 p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase text-gov-primary">Current month</p>
+              <h2 id="payment-alerts-heading" className="mt-0.5 text-base font-bold text-gov-navy">Payment alerts</h2>
+            </div>
+            <AlertCircle className="mt-1 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
+          </div>
+          {scheduleLoading ? (
+            <div className="mt-5 h-16 animate-pulse rounded bg-slate-100" aria-label="Loading payment alerts" />
+          ) : scheduleError ? (
+            <p role="alert" className="mt-4 text-sm text-rose-700">{scheduleError}</p>
+          ) : (
+            <>
+              {activeAlerts.length > 0 ? (
+                <ul className="mt-3 divide-y divide-slate-100">
+                  {activeAlerts.map((alert) => (
+                    <li key={alert.key} className="flex items-center justify-between gap-3 py-2.5">
+                      <span className="flex min-w-0 items-center gap-2 text-sm text-slate-700">
+                        <AlertCircle className="h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+                        <span className="truncate">{alert.label}</span>
+                      </span>
+                      <span className="shrink-0 rounded bg-amber-50 px-2 py-1 text-xs font-bold tabular-nums text-amber-900">{alert.count}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-4 flex items-center gap-2 text-sm text-emerald-800">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  No payment issues found for this month.
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => navigate('/schedules')}
+                className="mt-3 inline-flex items-center gap-1.5 text-sm font-bold text-gov-primary hover:text-gov-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gov-primary"
+              >
+                Review schedules <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </>
+          )}
+        </section>
+      </div>
 
       <section aria-labelledby="activity-heading" className="section-card overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">

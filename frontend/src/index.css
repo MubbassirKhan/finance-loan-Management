@@ -98,6 +98,10 @@
     @apply mt-1.5 block break-words text-xl font-bold leading-none text-gov-navy sm:text-2xl;
   }
 
+  .metric-card-currency {
+    @apply max-w-full truncate text-lg sm:text-xl;
+  }
+
   .table-scroll {
     @apply max-w-full overflow-x-auto overscroll-x-contain;
     scrollbar-width: thin;
