@@ -5,7 +5,7 @@ import re
 from calendar import monthrange
 from typing import Optional, Tuple, List, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func, or_, desc
+from sqlalchemy import select, func, or_, desc, and_
 from app.models.loan import Loan
 from app.models.loan_payment import LoanPayment
 from app.models.user import User
@@ -319,11 +319,26 @@ def record_loan_payment(
     db: Session,
     loan_id: int,
     payload: LoanPaymentCreate,
+    commit: bool = True,
 ) -> Tuple[Optional[LoanPayment], str]:
     """Records an installment payment and automatically calculates remaining balance."""
     loan = db.get(Loan, loan_id)
     if not loan:
         return None, "Loan record not found."
+
+    unpaid_installment = db.execute(
+        select(LoanPayment.installment_number)
+        .where(LoanPayment.loan_id == loan_id, LoanPayment.is_paid.is_(False))
+        .order_by(LoanPayment.installment_number.asc())
+        .limit(1)
+    ).scalar_one_or_none()
+    schedule_count = db.query(LoanPayment).filter_by(loan_id=loan_id).count()
+    next_installment = unpaid_installment or schedule_count + 1
+    target_installment = payload.installment_number or next_installment
+    if target_installment != next_installment:
+        return None, f"Installments must be processed in order. The next installment is #{next_installment}."
+    if target_installment > loan.total_installments:
+        return None, "All scheduled installments have already been processed."
 
     prev_recovered = db.execute(
         select(func.coalesce(func.sum(LoanPayment.recovered_amount), Decimal("0.00")))
@@ -393,12 +408,234 @@ def record_loan_payment(
     elif loan.status == "Sanctioned":
         loan.status = "Active"
 
-    db.commit()
+    if commit:
+        db.commit()
     if schedule_row:
-        db.refresh(schedule_row)
+        if commit:
+            db.refresh(schedule_row)
         return schedule_row, ""
-    db.refresh(payment)
+    if commit:
+        db.refresh(payment)
     return payment, ""
+
+
+def _installment_for_month(start_month: str, year: int, month: int) -> Optional[int]:
+    start_text = str(start_month or "").strip()
+    iso_match = re.match(r"^(\d{4})[-/](\d{1,2})", start_text)
+    name_match = re.match(r"^([A-Za-z]+)\s+(\d{4})$", start_text)
+    month_names = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ]
+
+    if iso_match:
+        start_year = int(iso_match.group(1))
+        start_month_number = int(iso_match.group(2))
+    elif name_match:
+        start_year = int(name_match.group(2))
+        month_name = name_match.group(1).replace(".", "").lower()
+        start_month_number = next(
+            (index for index, name in enumerate(month_names, 1) if name.lower().startswith(month_name)),
+            0,
+        )
+    else:
+        return None
+
+    if not 1 <= start_month_number <= 12:
+        return None
+    return (year - start_year) * 12 + month - start_month_number + 1
+
+
+def get_monthly_schedules(
+    db: Session,
+    month: str,
+    search: Optional[str] = None,
+    page: int = 1,
+    size: int = 100,
+) -> Tuple[List[Dict[str, Any]], int]:
+    """Lists each open loan's installment scheduled for a selected month."""
+    year, month_number = (int(part) for part in month.split("-"))
+    stmt = (
+        select(Loan, User, PoliceStation)
+        .join(User, Loan.kgid == User.kgid)
+        .join(PoliceStation, Loan.ps_id == PoliceStation.ps_id)
+        .where(Loan.status != "Closed")
+    )
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        stmt = stmt.where(or_(
+            Loan.kgid.ilike(term),
+            User.full_name.ilike(term),
+            User.designation.ilike(term),
+            User.buckle_number.ilike(term),
+            PoliceStation.station_name.ilike(term),
+        ))
+
+    loan_rows = db.execute(stmt.order_by(desc(Loan.sanction_date), desc(Loan.loan_id))).all()
+    eligible = []
+    for loan, user, station in loan_rows:
+        installment_number = _installment_for_month(loan.start_month, year, month_number)
+        if installment_number and installment_number <= loan.total_installments:
+            eligible.append((loan, user, station, installment_number))
+
+    total = len(eligible)
+    offset = (page - 1) * size
+    page_rows = eligible[offset:offset + size]
+    if not page_rows:
+        return [], total
+
+    payment_conditions = [
+        and_(
+            LoanPayment.loan_id == loan.loan_id,
+            LoanPayment.installment_number == installment_number,
+        )
+        for loan, _, _, installment_number in page_rows
+    ]
+    payments = db.execute(
+        select(LoanPayment).where(or_(*payment_conditions))
+    ).scalars().all()
+    payments_by_schedule = {
+        (payment.loan_id, payment.installment_number): payment
+        for payment in payments
+    }
+    paid_recoveries = db.execute(
+        select(
+            LoanPayment.loan_id,
+            func.coalesce(func.sum(LoanPayment.recovered_amount), Decimal("0.00")),
+        )
+        .where(
+            LoanPayment.loan_id.in_([loan.loan_id for loan, _, _, _ in page_rows]),
+            LoanPayment.is_paid.is_(True),
+        )
+        .group_by(LoanPayment.loan_id)
+    ).all()
+    recovered_by_loan = {loan_id: recovered for loan_id, recovered in paid_recoveries}
+    prior_unpaid_conditions = [
+        and_(
+            LoanPayment.loan_id == loan.loan_id,
+            LoanPayment.installment_number <= installment_number,
+            LoanPayment.is_paid.is_(False),
+        )
+        for loan, _, _, installment_number in page_rows
+    ]
+    prior_unpaid_rows = db.execute(
+        select(LoanPayment.loan_id, LoanPayment.installment_number)
+        .where(or_(*prior_unpaid_conditions))
+        .order_by(LoanPayment.installment_number.asc())
+    ).all()
+    first_unpaid_by_loan = {}
+    for loan_id, installment_number in prior_unpaid_rows:
+        first_unpaid_by_loan.setdefault(loan_id, installment_number)
+
+    items = []
+    for loan, user, station, installment_number in page_rows:
+        payment = payments_by_schedule.get((loan.loan_id, installment_number))
+        can_mark = bool(
+            payment
+            and not payment.is_paid
+            and first_unpaid_by_loan.get(loan.loan_id) == installment_number
+        )
+        opening_balance = max(
+            Decimal("0.00"),
+            loan.sanction_amount - recovered_by_loan.get(loan.loan_id, Decimal("0.00")),
+        )
+        scheduled_principal = min(loan.monthly_principal, opening_balance)
+        scheduled_interest = (
+            opening_balance * loan.interest_rate / Decimal("1200")
+        ).quantize(Decimal("0.01"))
+        items.append({
+            "loan_id": loan.loan_id,
+            "kgid": loan.kgid,
+            "full_name": user.full_name,
+            "designation": user.designation,
+            "station_name": station.station_name,
+            "loan_type": loan.loan_type.value if hasattr(loan.loan_type, "value") else str(loan.loan_type),
+            "installment_number": installment_number,
+            "scheduled_amount": scheduled_principal + scheduled_interest,
+            "status": (
+                "Paid" if payment and payment.is_paid
+                else "Schedule missing" if not payment
+                else "Waiting for earlier installment" if not can_mark
+                else "Due" if payment.status in ("Due", "Not Received")
+                else "Upcoming"
+            ),
+            "is_paid": bool(payment and payment.is_paid),
+            "can_mark": can_mark,
+        })
+    return items, total
+
+
+def bulk_update_monthly_schedules(
+    db: Session,
+    month: str,
+    loan_ids: List[int],
+    target_status: str,
+) -> Tuple[int, str]:
+    """Marks selected loans' month-specific installments as paid or due atomically."""
+    year, month_number = (int(part) for part in month.split("-"))
+    loans = db.execute(
+        select(Loan).where(Loan.loan_id.in_(loan_ids))
+    ).scalars().all()
+    loans_by_id = {loan.loan_id: loan for loan in loans}
+    if len(loans_by_id) != len(set(loan_ids)):
+        return 0, "One or more selected loans no longer exist. Refresh the schedule and try again."
+
+    installment_by_loan = {}
+    for loan in loans:
+        installment_number = _installment_for_month(loan.start_month, year, month_number)
+        if loan.status == "Closed" or not installment_number or installment_number > loan.total_installments:
+            return 0, f"Loan #{loan.loan_id} has no open installment for {month}."
+        installment_by_loan[loan.loan_id] = installment_number
+
+    payment_conditions = [
+        and_(
+            LoanPayment.loan_id == loan_id,
+            LoanPayment.installment_number == installment_number,
+        )
+        for loan_id, installment_number in installment_by_loan.items()
+    ]
+    schedule_rows = db.execute(
+        select(LoanPayment).where(or_(*payment_conditions))
+    ).scalars().all()
+    schedules_by_loan = {row.loan_id: row for row in schedule_rows}
+
+    unpaid_rows = db.execute(
+        select(LoanPayment.loan_id, LoanPayment.installment_number)
+        .where(
+            LoanPayment.loan_id.in_(list(installment_by_loan)),
+            LoanPayment.is_paid.is_(False),
+        )
+        .order_by(LoanPayment.installment_number.asc())
+    ).all()
+    first_unpaid_by_loan = {}
+    for loan_id, installment_number in unpaid_rows:
+        first_unpaid_by_loan.setdefault(loan_id, installment_number)
+
+    for loan_id, installment_number in installment_by_loan.items():
+        schedule_row = schedules_by_loan.get(loan_id)
+        if not schedule_row or schedule_row.installment_number != installment_number:
+            return 0, f"Loan #{loan_id} is missing its scheduled installment for {month}."
+        if schedule_row.is_paid:
+            return 0, f"Loan #{loan_id} is already received for {month}. Refresh the schedule and try again."
+        if first_unpaid_by_loan.get(loan_id) != installment_number:
+            earlier = first_unpaid_by_loan.get(loan_id)
+            return 0, f"Loan #{loan_id} must be processed in order. Installment #{earlier} is next."
+
+    payment_date = date(year, month_number, 1)
+    for loan_id, installment_number in installment_by_loan.items():
+        payload = LoanPaymentCreate(
+            installment_number=installment_number,
+            is_paid=target_status == "Paid",
+            payment_date=payment_date,
+            status=target_status,
+        )
+        payment, error = record_loan_payment(db, loan_id, payload, commit=False)
+        if not payment:
+            db.rollback()
+            return 0, error
+
+    db.commit()
+    return len(installment_by_loan), ""
 
 
 def get_loan_payments(db: Session, loan_id: int) -> List[LoanPayment]:
@@ -407,7 +644,7 @@ def get_loan_payments(db: Session, loan_id: int) -> List[LoanPayment]:
         db.execute(
             select(LoanPayment)
             .where(LoanPayment.loan_id == loan_id)
-            .order_by(LoanPayment.payment_date.asc(), LoanPayment.pay_id.asc())
+            .order_by(LoanPayment.installment_number.asc(), LoanPayment.pay_id.asc())
         ).scalars().all()
     )
 
@@ -423,7 +660,7 @@ def get_user_transactional_history(db: Session, kgid: str) -> Optional[Dict[str,
         db.execute(
             select(LoanPayment)
             .where(LoanPayment.kgid == kgid.strip())
-            .order_by(LoanPayment.payment_date.asc(), LoanPayment.pay_id.asc())
+            .order_by(LoanPayment.installment_number.asc(), LoanPayment.pay_id.asc())
         ).scalars().all()
     )
 

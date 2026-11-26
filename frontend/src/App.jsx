@@ -29,6 +29,7 @@ const MembershipFees = lazy(() => import('./pages/membership-fees/MembershipFees
 // Loans / Payments / Documents / Reports (Coming Soon)
 const LoanList     = lazy(() => import('./pages/loans/LoanList.jsx'))
 const LoanPayments = lazy(() => import('./pages/loans/LoanPayments.jsx'))
+const Schedules    = lazy(() => import('./pages/loans/Schedules.jsx'))
 const Documents    = lazy(() => import('./pages/documents/Documents.jsx'))
 const Reports      = lazy(() => import('./pages/reports/Reports.jsx'))
 
@@ -89,6 +90,7 @@ function App() {
 
           {/* Loans */}
           <Route path="/loans" element={<LoanList />} />
+          <Route path="/schedules" element={<Schedules />} />
           <Route path="/loan-payments" element={<LoanPayments />} />
 
           {/* Documents */}

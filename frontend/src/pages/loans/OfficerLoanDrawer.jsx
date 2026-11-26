@@ -14,6 +14,28 @@ function formatINR(val) {
   return '₹' + Number(val).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
+function getScheduleMonth(startMonth, installmentOffset) {
+  const start = String(startMonth || '').trim()
+  const nameMatch = start.match(/^([A-Za-z]+)\s+(\d{4})$/)
+  const isoMatch = start.match(/^([0-9]{4})[-/]([0-9]{1,2})/)
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December']
+  let year = 0
+  let monthIndex = -1
+
+  if (isoMatch) {
+    year = Number(isoMatch[1])
+    monthIndex = Number(isoMatch[2]) - 1
+  } else if (nameMatch) {
+    year = Number(nameMatch[2])
+    const name = nameMatch[1].replace(/\.$/, '')
+    monthIndex = monthNames.findIndex((item) => item.toLowerCase() === name.toLowerCase() || item.slice(0, 3).toLowerCase() === name.slice(0, 3).toLowerCase())
+  }
+
+  if (year <= 0 || monthIndex < 0) return null
+  const date = new Date(year, monthIndex + installmentOffset, 1)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
 export default function OfficerLoanDrawer({
   isOpen,
   onClose,
@@ -208,9 +230,12 @@ export default function OfficerLoanDrawer({
     const annualRatePercent = Number(activeLoan.interest_rate || 0) > 0
       ? Number(activeLoan.interest_rate)
       : getAnnualRatePercent()
+    const firstUnpaidInstallment = loanPayments.find((payment) => !payment.is_paid)?.installment_number
     let openingBalance = sanctionAmount
 
     return loanPayments.map((payment, index) => {
+      const installment = Number(payment.installment_number || index + 1)
+      const scheduleMonth = getScheduleMonth(activeLoan.start_month, installment - 1)
       const openingAdvance = Number(payment.opening_advance || openingBalance)
       const recovery = Number(payment.recovered_amount || 0)
       const balance = Number(payment.balance || 0)
@@ -222,30 +247,11 @@ export default function OfficerLoanDrawer({
       openingBalance = balance
 
       return {
-        installment: index + 1,
-        payment_date: (() => {
-          const start = String(activeLoan.start_month || '').trim()
-          const nameMatch = start.match(/^([A-Za-z]+)\s+(\d{4})$/)
-          const isoMatch = start.match(/^([0-9]{4})[-/]([0-9]{1,2})/) 
-          const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December']
-          let year = 0
-          let monthIndex = -1
-
-          if (isoMatch) {
-            year = Number(isoMatch[1])
-            monthIndex = Number(isoMatch[2]) - 1
-          } else if (nameMatch) {
-            year = Number(nameMatch[2])
-            const name = nameMatch[1].replace(/\.$/, '')
-            monthIndex = monthNames.findIndex((item) => item.toLowerCase() === name.toLowerCase() || item.slice(0, 3).toLowerCase() === name.slice(0, 3).toLowerCase())
-          }
-
-          if (year > 0 && monthIndex >= 0) {
-            const date = new Date(year, monthIndex + index, 1)
-            return date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
-          }
-          return '-'
-        })(),
+        installment,
+        payment_date: scheduleMonth
+          ? new Date(`${scheduleMonth}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+          : '-',
+        schedule_month: scheduleMonth,
         opening_advance: formatNumberForPdf(openingAdvance),
         recovery: formatNumberForPdf(recovery),
         balance: formatNumberForPdf(balance),
@@ -254,7 +260,12 @@ export default function OfficerLoanDrawer({
         payable_amount: formatNumberForPdf(paidAmount),
         paid_interest: formatNumberForPdf(paidInterest),
         paid_amount: formatNumberForPdf(paidAmount),
-        status: payment.is_paid ? 'Paid' : (payment.status || 'Projected'),
+        status: payment.is_paid
+          ? 'Paid'
+          : payment.status === 'Due'
+            && installment === firstUnpaidInstallment
+          ? 'Due'
+          : payment.status === 'Not Received' ? 'Not Received' : 'Projected',
       }
     })
   }
@@ -850,7 +861,7 @@ export default function OfficerLoanDrawer({
                 )}
 
                 {/* Transactional History Table */}
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] font-semibold text-slate-700" aria-label="Payment status color legend">
+                <div className="sticky top-0 z-10 -mx-6 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-slate-200 bg-white px-6 py-2 text-[11px] font-semibold text-slate-700" aria-label="Payment status color legend">
                   <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-emerald-400 bg-emerald-200" />Paid</span>
                   <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-red-400 bg-red-200" />Due</span>
                   <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-amber-400 bg-amber-200" />Next upcoming</span>
@@ -878,9 +889,10 @@ export default function OfficerLoanDrawer({
                           const paidRow = row.status === 'Paid'
                           const dueRow = row.status === 'Due'
                           const firstUnpaid = getHistoryRows().find((item) => item.status !== 'Paid')
-                          const canReceive = firstUnpaid?.installment === row.installment
+                          const isNextUnpaid = firstUnpaid?.installment === row.installment
+                          const canReceive = isNextUnpaid
                           return (
-                          <tr key={row.installment} className={`border-b transition-colors ${paidRow ? 'border-emerald-300 bg-emerald-100' : dueRow ? 'border-red-300 bg-red-100' : canReceive ? 'border-amber-300 bg-amber-100' : 'border-slate-200 bg-white text-slate-700'}`}>
+                          <tr key={row.installment} className={`border-b transition-colors ${paidRow ? 'border-emerald-300 bg-emerald-100' : dueRow ? 'border-red-300 bg-red-100' : isNextUnpaid ? 'border-amber-300 bg-amber-100' : 'border-slate-200 bg-white text-slate-700'}`}>
                             {visibleHistoryColumns.installment && <td className="border-r border-slate-100 px-2 py-2 text-center font-mono font-semibold">{row.installment}</td>}
                             {visibleHistoryColumns.payment_date && <td className="border-r border-slate-100 px-2 py-2 whitespace-nowrap">{row.payment_date}</td>}
                             {visibleHistoryColumns.opening_advance && <td className="border-r border-slate-100 px-2 py-2 text-right font-medium">{formatINR(row.opening_advance.replace(/,/g, ''))}</td>}
@@ -904,21 +916,21 @@ export default function OfficerLoanDrawer({
                                   >
                                     Received
                                   </button>
-                                ) : canReceive ? (
+                                ) : isNextUnpaid ? (
                                   <div className="inline-flex items-center gap-1.5">
                                     <button
                                       type="button"
                                       onClick={() => onRecordPayment?.(activeLoan, fetchHistory, null, row.installment)}
-                                      disabled={!onRecordPayment}
-                                      className="rounded border border-emerald-600 bg-emerald-700 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                      disabled={!canReceive || !onRecordPayment}
+                                      className="rounded border border-emerald-600 bg-emerald-700 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500"
                                     >
                                       Mark Received
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => handleMarkDue(row.installment)}
-                                      disabled={markingDueInstallment !== null}
-                                      className="rounded border border-red-500 bg-red-100 px-1.5 py-1 text-[10px] font-bold text-red-900 hover:bg-red-200 disabled:cursor-wait disabled:opacity-60"
+                                      disabled={!canReceive || markingDueInstallment !== null}
+                                      className="rounded border border-red-500 bg-red-100 px-1.5 py-1 text-[10px] font-bold text-red-900 hover:bg-red-200 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500"
                                     >
                                       {markingDueInstallment === row.installment ? 'Saving…' : 'Mark Due'}
                                     </button>

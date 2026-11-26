@@ -17,10 +17,13 @@ from app.models.loan_payment import LoanPayment
 from app.models.user import User
 from app.schemas.loan import (
     LoanCreate,
+    BulkScheduleUpdate,
+    BulkScheduleUpdateResponse,
     LoanListResponse,
     LoanPaymentCreate,
     LoanPaymentResponse,
     LoanResponse,
+    MonthlyScheduleResponse,
     LoanUpdate,
     UserLoanHistoryResponse,
 )
@@ -112,6 +115,41 @@ def get_user_loan_history(
             detail=f"Member with KGID '{kgid}' not found.",
         )
     return history
+
+
+@router.get(
+    "/schedules",
+    response_model=MonthlyScheduleResponse,
+    summary="List Monthly Loan Schedules",
+)
+def list_monthly_schedules(
+    month: str = Query(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    search: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    size: int = Query(100, ge=1, le=500),
+    admin: Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    items, total = loan_service.get_monthly_schedules(db, month, search, page, size)
+    return MonthlyScheduleResponse(items=items, total=total, page=page, size=size)
+
+
+@router.post(
+    "/schedules/bulk",
+    response_model=BulkScheduleUpdateResponse,
+    summary="Bulk Update Monthly Loan Schedules",
+)
+def bulk_update_schedules(
+    payload: BulkScheduleUpdate,
+    admin: Admin = Depends(require_password_changed),
+    db: Session = Depends(get_db),
+):
+    updated, error = loan_service.bulk_update_monthly_schedules(
+        db, payload.month, payload.loan_ids, payload.status
+    )
+    if error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=error)
+    return BulkScheduleUpdateResponse(updated=updated, status=payload.status)
 
 
 @router.get(

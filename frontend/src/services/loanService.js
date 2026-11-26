@@ -54,6 +54,20 @@ export const loanService = {
     return response.data;
   },
 
+  // GET /api/v1/loans/schedules
+  getMonthlySchedules: async ({ month, search = '', page = 1, size = 50 }) => {
+    const response = await api.get('/api/v1/loans/schedules', {
+      params: { month, search: search.trim(), page, size },
+    })
+    return response.data
+  },
+
+  // POST /api/v1/loans/schedules/bulk
+  bulkUpdateMonthlySchedules: async (scheduleData) => {
+    const response = await api.post('/api/v1/loans/schedules/bulk', scheduleData)
+    return response.data
+  },
+
   // GET /api/v1/loans/user/{kgid}/history
   getUserHistory: async (kgid) => {
     const response = await api.get(`/api/v1/loans/user/${encodeURIComponent(kgid)}/history`);

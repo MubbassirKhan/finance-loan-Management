@@ -7,6 +7,7 @@ import {
   ShieldCheck,
   CreditCard,
   HandCoins,
+  CalendarDays,
   Receipt,
   FolderArchive,
   FileSpreadsheet,
@@ -45,6 +46,11 @@ export const Sidebar = ({ collapsed = false, onCollapsedChange = () => {}, mobil
       to: '/loans',
       label: t('nav.loans', 'Loan Management'),
       icon: HandCoins,
+    },
+    {
+      to: '/schedules',
+      label: t('nav.schedules', 'Schedules'),
+      icon: CalendarDays,
     },
     {
       to: '/loan-payments',

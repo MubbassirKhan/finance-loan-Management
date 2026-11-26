@@ -1,7 +1,7 @@
 """Pydantic schemas for Loan Management and Loan Payment transactions."""
 from datetime import date, datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.models.enums import LoanTypeEnum
 from app.schemas.user import UserDetailResponse
@@ -123,6 +123,38 @@ class LoanListResponse(BaseModel):
     total: int
     page: int
     size: int
+
+
+class MonthlyScheduleItem(BaseModel):
+    loan_id: int
+    kgid: str
+    full_name: str
+    designation: str
+    station_name: str
+    loan_type: str
+    installment_number: int
+    scheduled_amount: Decimal
+    status: str
+    is_paid: bool
+    can_mark: bool
+
+
+class MonthlyScheduleResponse(BaseModel):
+    items: List[MonthlyScheduleItem]
+    total: int
+    page: int
+    size: int
+
+
+class BulkScheduleUpdate(BaseModel):
+    month: str = Field(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    loan_ids: List[int] = Field(..., min_length=1, max_length=500)
+    status: Literal["Paid", "Due"]
+
+
+class BulkScheduleUpdateResponse(BaseModel):
+    updated: int
+    status: str
 
 
 class UserLoanHistoryResponse(BaseModel):
