@@ -5,6 +5,7 @@ import { useToast } from '../../context/ToastContext.jsx'
 import { useLanguage } from '../../context/LanguageContext.jsx'
 import loanService from '../../services/loanService.js'
 import policeStationService from '../../services/policeStationService.js'
+import OfficerLoanDrawer from './OfficerLoanDrawer.jsx'
 
 const PAGE_SIZE = 50
 const MAX_BULK_SELECTION = 500
@@ -35,6 +36,28 @@ function formatMonth(value, locale) {
     month: 'long',
     year: 'numeric',
   })
+}
+
+function getInstallmentPaymentDate(loan, installmentNumber) {
+  const start = String(loan.start_month || '').trim()
+  const isoMatch = start.match(/^(\d{4})[-/](\d{1,2})/)
+  const nameMatch = start.match(/^([A-Za-z]+)\s+(\d{4})$/)
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+  let year = 0
+  let monthIndex = -1
+
+  if (isoMatch) {
+    year = Number(isoMatch[1])
+    monthIndex = Number(isoMatch[2]) - 1
+  } else if (nameMatch) {
+    year = Number(nameMatch[2])
+    const name = nameMatch[1].replace(/\.$/, '').toLowerCase()
+    monthIndex = monthNames.findIndex((monthName) => monthName.toLowerCase().startsWith(name))
+  }
+
+  if (year <= 0 || monthIndex < 0 || installmentNumber < 1) return null
+  const date = new Date(year, monthIndex + installmentNumber - 1, 1)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`
 }
 
 function getSchemeLabel(scheme, t) {
@@ -77,6 +100,9 @@ export default function Schedules() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [selectingUpcoming, setSelectingUpcoming] = useState(false)
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false)
+  const [historyKgid, setHistoryKgid] = useState('')
+  const [historyLoanId, setHistoryLoanId] = useState(null)
 
   useEffect(() => {
     let active = true
@@ -187,6 +213,28 @@ export default function Schedules() {
     }
   }
 
+  const handleRecordReceived = async (loan, refreshDrawer, _event, installmentNumber) => {
+    const paymentDate = getInstallmentPaymentDate(loan, installmentNumber)
+    if (!paymentDate) {
+      error(t('schedules.installmentDateError'))
+      return
+    }
+
+    try {
+      await loanService.recordPayment(loan.loan_id, {
+        installment_number: installmentNumber,
+        payment_date: paymentDate,
+        status: 'Paid',
+        is_paid: true,
+      })
+      success(t('schedules.paymentReceivedSuccess', { number: installmentNumber }))
+      await refreshDrawer?.()
+      setReloadKey((value) => value + 1)
+    } catch (err) {
+      error(err.response?.data?.detail || t('schedules.paymentReceivedError'))
+    }
+  }
+
   const handleSelectAllUpcoming = async () => {
     setSelectingUpcoming(true)
     try {
@@ -213,6 +261,12 @@ export default function Schedules() {
     } finally {
       setSelectingUpcoming(false)
     }
+  }
+
+  const openMemberHistory = (item) => {
+    setHistoryKgid(item.kgid)
+    setHistoryLoanId(item.loan_id)
+    setHistoryDrawerOpen(true)
   }
 
   return (
@@ -437,7 +491,15 @@ export default function Schedules() {
                       />
                     </td>
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-slate-900">{item.full_name}</p>
+                      <button
+                        type="button"
+                        onClick={() => openMemberHistory(item)}
+                        aria-label={t('schedules.viewMemberRecord', { name: item.full_name })}
+                        title={t('schedules.viewMemberRecord', { name: item.full_name })}
+                        className="rounded-sm px-0.5 text-left font-semibold text-slate-900 transition-colors hover:bg-blue-50 hover:text-gov-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gov-primary"
+                      >
+                        {item.full_name}
+                      </button>
                       <p className="mt-0.5 font-mono text-xs text-slate-500">{item.kgid}</p>
                     </td>
                     <td className="px-4 py-3 text-slate-700">{item.station_name}</td>
@@ -491,6 +553,13 @@ export default function Schedules() {
           </div>
         </section>
       </div>
+      <OfficerLoanDrawer
+        isOpen={historyDrawerOpen}
+        onClose={() => setHistoryDrawerOpen(false)}
+        kgid={historyKgid}
+        initialLoanId={historyLoanId}
+        onRecordPayment={handleRecordReceived}
+      />
     </div>
   )
 }

@@ -88,7 +88,11 @@
     "loading": "ವೇಳಾಪಟ್ಟಿಗಳನ್ನು ಲೋಡ್ ಮಾಡಲಾಗುತ್ತಿದೆ...",
     "empty": "{{month}} ತಿಂಗಳಿಗೆ ಸಾಲ ವೇಳಾಪಟ್ಟಿಗಳು ಕಂಡುಬಂದಿಲ್ಲ.",
     "loanNumber": "ಸಾಲ #{{id}}",
+    "viewMemberRecord": "{{name}} ಅವರ ವಹಿವಾಟುಗಳನ್ನು ನೋಡಿ",
     "selectMemberScheme": "{{name}}, {{scheme}} ಆಯ್ಕೆಮಾಡಿ",
+    "paymentReceivedSuccess": "ಕಂತು #{{number}} ಅನ್ನು ಪಾವತಿಸಲಾಗಿದೆ ಎಂದು ಗುರುತಿಸಲಾಗಿದೆ.",
+    "paymentReceivedError": "ಕಂತನ್ನು ಪಾವತಿಸಲಾಗಿದೆ ಎಂದು ಗುರುತಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.",
+    "installmentDateError": "ಕಂತಿನ ನಿಗದಿತ ತಿಂಗಳನ್ನು ನಿರ್ಧರಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.",
     "pageCount": "ಪುಟ {{page}} / {{total}}",
     "previousPage": "ಹಿಂದಿನ ವೇಳಾಪಟ್ಟಿ ಪುಟ",
     "nextPage": "ಮುಂದಿನ ವೇಳಾಪಟ್ಟಿ ಪುಟ"

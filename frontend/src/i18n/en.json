@@ -88,7 +88,11 @@
     "loading": "Loading schedules...",
     "empty": "No loan schedules found for {{month}}.",
     "loanNumber": "Loan #{{id}}",
+    "viewMemberRecord": "View {{name}}'s transactions",
     "selectMemberScheme": "Select {{name}}, {{scheme}}",
+    "paymentReceivedSuccess": "Installment #{{number}} marked received.",
+    "paymentReceivedError": "Could not mark the installment as received.",
+    "installmentDateError": "Could not determine the installment's scheduled month.",
     "pageCount": "Page {{page}} of {{total}}",
     "previousPage": "Previous schedules page",
     "nextPage": "Next schedules page"
