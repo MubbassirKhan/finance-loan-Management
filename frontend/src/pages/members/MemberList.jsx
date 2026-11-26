@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { UserPlus, Eye, Search, X, Pencil, UserCheck, UserX, Columns3, FileSpreadsheet, FileText } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader.jsx'
 import DataTable from '../../components/common/DataTable.jsx'
 import Button from '../../components/common/Button.jsx'
 import ConfirmDialog from '../../components/common/ConfirmDialog.jsx'
+import MemberCreate from './MemberCreate.jsx'
+import MemberDetails from './MemberDetails.jsx'
 import { useLanguage } from '../../context/LanguageContext.jsx'
 import { useToast } from '../../context/ToastContext.jsx'
 import memberService from '../../services/memberService.js'
@@ -27,7 +28,6 @@ function downloadBlob(blob, filename) {
 export default function MemberList() {
   const { t } = useLanguage()
   const { error: toastError } = useToast()
-  const navigate = useNavigate()
 
   // Data
   const [members, setMembers]   = useState([])
@@ -46,6 +46,7 @@ export default function MemberList() {
   const [visibleColumnKeys, setVisibleColumnKeys] = useState(DEFAULT_VISIBLE_COLUMNS)
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false)
   const [exporting, setExporting] = useState('')
+  const [memberDialog, setMemberDialog] = useState(null)
   const columnsMenuRef = useRef(null)
   const columnsTriggerRef = useRef(null)
 
@@ -177,7 +178,7 @@ export default function MemberList() {
         <div className="flex items-center justify-center gap-1 whitespace-nowrap">
           <button
             type="button"
-            onClick={() => navigate(`/members/${encodeURIComponent(r.kgid)}`)}
+            onClick={() => setMemberDialog({ mode: 'view', kgid: r.kgid })}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-blue-200 bg-white text-gov-primary shadow-sm transition-colors hover:border-gov-primary hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gov-primary"
             title={t('common.view')}
             aria-label={`View ${r.full_name}`}
@@ -186,7 +187,7 @@ export default function MemberList() {
           </button>
           <button
             type="button"
-            onClick={() => navigate(`/members/${encodeURIComponent(r.kgid)}/edit`)}
+            onClick={() => setMemberDialog({ mode: 'edit', kgid: r.kgid })}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-orange-200 bg-white text-orange-700 shadow-sm transition-colors hover:border-orange-400 hover:bg-orange-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
             title="Edit member"
             aria-label={`Edit ${r.full_name}`}
@@ -283,7 +284,7 @@ export default function MemberList() {
           <Button
             variant="primary"
             icon={<UserPlus className="w-4 h-4" />}
-            onClick={() => navigate('/members/create')}
+            onClick={() => setMemberDialog({ mode: 'create' })}
           >
             {t('members.registerNew')}
           </Button>
@@ -422,6 +423,35 @@ export default function MemberList() {
         confirmLabel={memberPendingStatus?.status === 'Active' ? 'Make Inactive' : 'Make Active'}
         confirmVariant={memberPendingStatus?.status === 'Active' ? 'danger' : 'success'}
       />
+
+      {memberDialog?.mode === 'create' && (
+        <MemberCreate
+          onClose={() => setMemberDialog(null)}
+          onSaved={(savedMember) => {
+            setMemberDialog({ mode: 'view', kgid: savedMember.kgid })
+            fetchMembers()
+          }}
+        />
+      )}
+      {memberDialog?.mode === 'edit' && (
+        <MemberCreate
+          initialKgid={memberDialog.kgid}
+          onClose={() => setMemberDialog(null)}
+          onSaved={(savedMember) => {
+            setMemberDialog({ mode: 'view', kgid: savedMember.kgid })
+            fetchMembers()
+          }}
+        />
+      )}
+      {memberDialog?.mode === 'view' && (
+        <MemberDetails
+          memberKgid={memberDialog.kgid}
+          isModal
+          onClose={() => setMemberDialog(null)}
+          onEdit={() => setMemberDialog({ mode: 'edit', kgid: memberDialog.kgid })}
+          onUpdated={fetchMembers}
+        />
+      )}
     </div>
   )
 }

@@ -6,6 +6,7 @@ import PageHeader from '../../components/layout/PageHeader.jsx'
 import Button from '../../components/common/Button.jsx'
 import Input from '../../components/common/Input.jsx'
 import Select from '../../components/common/Select.jsx'
+import Modal from '../../components/common/Modal.jsx'
 import { useLanguage } from '../../context/LanguageContext.jsx'
 import { useToast } from '../../context/ToastContext.jsx'
 import memberService from '../../services/memberService.js'
@@ -41,12 +42,13 @@ const CATEGORIES = [
 // IFSC regex: 4 uppercase letters + 0 + 6 alphanumeric
 const IFSC_REGEX = /^[A-Z]{4}0[A-Z0-9]{6}$/
 
-export default function MemberCreate() {
+export default function MemberCreate({ onClose: onCloseModal = null, onSaved = null, initialKgid = null }) {
   const { t } = useLanguage()
   const { success, error: toastError } = useToast()
   const navigate = useNavigate()
   const { kgid: routeKgid } = useParams()
-  const memberKgid = routeKgid ? decodeURIComponent(routeKgid) : null
+  const memberKgid = initialKgid || (routeKgid ? decodeURIComponent(routeKgid) : null)
+  const isModal = Boolean(onCloseModal)
 
   const [stations, setStations]   = useState([])
   const [feeTiers, setFeeTiers]   = useState([])
@@ -112,14 +114,16 @@ export default function MemberCreate() {
         try {
           await memberService.uploadMemberDocuments(savedMember.kgid, selectedFiles)
         } catch (uploadError) {
-          toastError(`Member saved, but document upload failed: ${uploadError.message}`)
-          navigate(`/members/${encodeURIComponent(savedMember.kgid)}`)
+          toastError(t('members.documentUploadFailed', { message: uploadError.message }))
+          if (onSaved) onSaved(savedMember)
+          else navigate(`/members/${encodeURIComponent(savedMember.kgid)}`)
           return
         }
       }
 
       success(memberKgid ? 'Member details updated.' : t('members.createSuccess'))
-      navigate(`/members/${encodeURIComponent(savedMember.kgid)}`)
+      if (onSaved) onSaved(savedMember)
+      else navigate(`/members/${encodeURIComponent(savedMember.kgid)}`)
     } catch (err) {
       if (err.fieldErrors) {
         Object.entries(err.fieldErrors).forEach(([field, msg]) => {
@@ -134,7 +138,7 @@ export default function MemberCreate() {
   }
 
   if (loadingData) {
-    return (
+    const loadingContent = (
       <div className="p-6">
         <div className="animate-pulse space-y-4">
           {[...Array(6)].map((_, i) => (
@@ -143,21 +147,20 @@ export default function MemberCreate() {
         </div>
       </div>
     )
+    return isModal ? (
+      <Modal
+        isOpen
+        onClose={onCloseModal}
+        title={memberKgid ? t('members.editTitle') : t('members.createTitle')}
+        maxWidth="max-w-5xl"
+      >
+        {loadingContent}
+      </Modal>
+    ) : loadingContent
   }
 
-  return (
-    <div className="mx-auto w-full max-w-4xl space-y-5 px-4 py-5 sm:space-y-6 sm:px-6 sm:py-6 lg:px-8">
-      <PageHeader
-        title={memberKgid ? 'Edit Member Details' : t('members.createTitle')}
-        subtitle={memberKgid ? `KGID: ${memberKgid}` : t('members.createSubtitle')}
-        actions={
-          <Button variant="outline" icon={<ArrowLeft className="w-4 h-4" />} onClick={() => navigate('/members')}>
-            {t('common.back')}
-          </Button>
-        }
-      />
-
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+  const formContent = (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
 
         {/* ── Personal Information ──────────────────────────── */}
         <div className="section-card p-6">
@@ -286,24 +289,27 @@ export default function MemberCreate() {
 
         {/* ── Member Documents ────────────────────────────── */}
         <div className="section-card p-6">
-          <h3 className="form-section-header">Member Documents</h3>
+          <h3 className="form-section-header">{t('members.documentsTitle')}</h3>
           <div className="space-y-3">
             <label
               htmlFor="member-documents"
-              className="inline-flex cursor-pointer items-center gap-2 rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="relative inline-flex cursor-pointer items-center gap-2 overflow-hidden rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus-within:outline-none focus-within:ring-2 focus-within:ring-gov-primary"
             >
               <Upload className="h-4 w-4" />
-              Choose files
+              {t('members.chooseDocuments')}
               <input
                 id="member-documents"
                 type="file"
                 accept=".pdf,.jpg,.jpeg,.png"
                 multiple
-                className="sr-only"
-                onChange={(event) => setSelectedFiles(Array.from(event.target.files || []))}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                onChange={(event) => {
+                  setSelectedFiles(Array.from(event.currentTarget.files || []))
+                  event.currentTarget.value = ''
+                }}
               />
             </label>
-            <p className="text-xs text-slate-500">PDF, JPG, or PNG. Maximum 10 MB per file.</p>
+            <p className="text-xs text-slate-500">{t('members.documentFormats')}</p>
             {selectedFiles.length > 0 && (
               <ul className="divide-y divide-slate-100 rounded border border-slate-200">
                 {selectedFiles.map((file, index) => (
@@ -364,7 +370,7 @@ export default function MemberCreate() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => navigate('/members')}
+            onClick={() => (onCloseModal ? onCloseModal() : navigate('/members'))}
           >
             {t('common.cancel')}
           </Button>
@@ -378,6 +384,34 @@ export default function MemberCreate() {
           </Button>
         </div>
       </form>
+  )
+
+  if (isModal) {
+    return (
+      <Modal
+        isOpen
+        onClose={onCloseModal}
+        title={memberKgid ? t('members.editTitle') : t('members.createTitle')}
+        subtitle={memberKgid ? `KGID: ${memberKgid}` : t('members.createSubtitle')}
+        maxWidth="max-w-5xl"
+      >
+        {formContent}
+      </Modal>
+    )
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-4xl space-y-5 px-4 py-5 sm:space-y-6 sm:px-6 sm:py-6 lg:px-8">
+      <PageHeader
+        title={memberKgid ? t('members.editTitle') : t('members.createTitle')}
+        subtitle={memberKgid ? `KGID: ${memberKgid}` : t('members.createSubtitle')}
+        actions={
+          <Button variant="outline" icon={<ArrowLeft className="w-4 h-4" />} onClick={() => navigate('/members')}>
+            {t('common.back')}
+          </Button>
+        }
+      />
+      {formContent}
     </div>
   )
 }

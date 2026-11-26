@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Briefcase, Download, FileText, Landmark, Pencil, User, UserCheck, UserX, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Briefcase, Download, Eye, FileText, Landmark, Pencil, User, UserCheck, UserX, AlertCircle } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader.jsx'
 import Button from '../../components/common/Button.jsx'
 import ConfirmDialog from '../../components/common/ConfirmDialog.jsx'
 import Loading from '../../components/common/Loading.jsx'
+import Modal from '../../components/common/Modal.jsx'
 import { useLanguage } from '../../context/LanguageContext.jsx'
 import { useToast } from '../../context/ToastContext.jsx'
 import memberService from '../../services/memberService.js'
@@ -31,8 +32,9 @@ function SectionCard({ icon: Icon, title, children }) {
   )
 }
 
-export default function MemberDetails() {
-  const { kgid } = useParams()
+export default function MemberDetails({ memberKgid: propKgid = null, isModal = false, onClose = null, onEdit = null, onUpdated = null }) {
+  const { kgid: routeKgid } = useParams()
+  const memberKgid = propKgid || (routeKgid ? decodeURIComponent(routeKgid) : null)
   const { t }    = useLanguage()
   const { success, error: toastError } = useToast()
   const navigate = useNavigate()
@@ -43,11 +45,13 @@ export default function MemberDetails() {
   const [error, setError]     = useState(null)
   const [confirmStatusChange, setConfirmStatusChange] = useState(false)
   const [statusLoading, setStatusLoading] = useState(false)
+  const [previewDocument, setPreviewDocument] = useState(null)
+  const [previewLoading, setPreviewLoading] = useState(null)
 
   useEffect(() => {
     let cancelled = false
     memberService
-      .getMemberByKgid(decodeURIComponent(kgid))
+      .getMemberByKgid(memberKgid)
       .then(data => {
         if (!cancelled) setMember(data)
       })
@@ -57,11 +61,16 @@ export default function MemberDetails() {
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
-    memberService.getMemberDocuments(decodeURIComponent(kgid))
+    memberService.getMemberDocuments(memberKgid)
       .then(data => { if (!cancelled) setDocuments(data) })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [kgid])
+  }, [memberKgid])
+
+  useEffect(() => {
+    if (!previewDocument?.url) return undefined
+    return () => URL.revokeObjectURL(previewDocument.url)
+  }, [previewDocument])
 
   const handleStatusChange = async () => {
     const nextStatus = member.status === 'Active' ? 'Inactive' : 'Active'
@@ -69,6 +78,7 @@ export default function MemberDetails() {
     try {
       const updated = await memberService.updateMemberStatus(member.kgid, nextStatus)
       setMember(updated)
+      onUpdated?.(updated)
       success(`Member marked ${nextStatus.toLowerCase()}.`)
       setConfirmStatusChange(false)
     } catch (err) {
@@ -88,23 +98,156 @@ export default function MemberDetails() {
       link.click()
       URL.revokeObjectURL(url)
     } catch (err) {
-      toastError(err.message || 'Could not download document.')
+      toastError(err.message || t('members.downloadDocumentError'))
     }
   }
 
-  if (loading) return <Loading fullScreen />
+  const handleViewDocument = async (item) => {
+    setPreviewLoading(item.doc_id)
+    try {
+      const blob = await memberService.downloadMemberDocument(member.kgid, item.doc_id)
+      setPreviewDocument({
+        name: item.original_filename || `Document ${item.doc_id}`,
+        url: URL.createObjectURL(blob),
+      })
+    } catch (err) {
+      toastError(err.message || t('members.viewDocumentError'))
+    } finally {
+      setPreviewLoading(null)
+    }
+  }
+
+  const memberContent = (
+    <div className="space-y-5">
+      <div>
+        <span className={member?.status === 'Active' ? 'badge-active' : 'badge-inactive'}>
+          {member?.status}
+        </span>
+      </div>
+
+      <SectionCard icon={User} title={t('members.sectionPersonal')}>
+        <InfoRow label={t('members.kgid')} value={member?.kgid} />
+        <InfoRow label={t('members.fullName')} value={member?.full_name} />
+        <InfoRow label={t('members.dob')} value={member?.dob} />
+        <InfoRow label={t('members.gender')} value={member?.gender} />
+        <InfoRow label={t('members.caste')} value={member?.caste} />
+        <InfoRow label={t('members.subCaste')} value={member?.sub_caste} />
+        <InfoRow label={t('members.category')} value={member?.category} />
+      </SectionCard>
+
+      <SectionCard icon={Briefcase} title={t('members.sectionEmployment')}>
+        <InfoRow label={t('members.designation')} value={member?.designation} />
+        <InfoRow label={t('members.station')} value={member?.station_name || member?.ps_id} />
+        <InfoRow label={t('members.shareNo')} value={member?.share_number} />
+        <InfoRow label={t('members.buckleNo')} value={member?.buckle_number} />
+      </SectionCard>
+
+      <SectionCard icon={FileText} title={t('members.sectionMembership')}>
+        <InfoRow label={t('members.feeTier')} value={member?.mf_id} />
+        <InfoRow label={t('members.financialYear')} value={member?.financial_year} />
+        <InfoRow label={t('members.financialMonth')} value={member?.financial_month} />
+        <InfoRow label="Created At" value={member?.created_at ? new Date(member.created_at).toLocaleDateString('en-IN') : '—'} />
+      </SectionCard>
+
+      <SectionCard icon={Landmark} title={t('members.sectionBanking')}>
+        <InfoRow label={t('members.bankAccount')} value={member?.bank_account_number} />
+        <InfoRow label={t('members.ifsc')} value={member?.ifsc_code} />
+      </SectionCard>
+
+      <SectionCard icon={FileText} title={t('members.documentsTitle')}>
+        {documents.length ? documents.map(item => (
+          <div key={item.doc_id} className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 py-3 last:border-0">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-gray-800">{item.original_filename || `Document ${item.doc_id}`}</p>
+              <p className="text-xs text-gray-500">{item.stored_date}</p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                icon={<Eye className="h-3.5 w-3.5" />}
+                loading={previewLoading === item.doc_id}
+                onClick={() => handleViewDocument(item)}
+              >
+                {t('members.viewDocument')}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                icon={<Download className="h-3.5 w-3.5" />}
+                onClick={() => handleDownload(item)}
+              >
+                {t('members.downloadDocument')}
+              </Button>
+            </div>
+          </div>
+        )) : (
+          <p className="px-5 py-4 text-sm text-gray-500">{t('members.noDocuments')}</p>
+        )}
+      </SectionCard>
+
+      {previewDocument && (
+        <section className="overflow-hidden rounded-md border border-slate-200 bg-white">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="truncate text-sm font-semibold text-slate-800">{previewDocument.name}</p>
+            <button
+              type="button"
+              onClick={() => setPreviewDocument(null)}
+              aria-label={t('members.closeDocumentPreview')}
+              className="shrink-0 rounded px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200"
+            >
+              {t('members.closeDocumentPreview')}
+            </button>
+          </div>
+          <iframe
+            title={previewDocument.name}
+            src={previewDocument.url}
+            className="h-[55vh] min-h-72 w-full border-0"
+          />
+        </section>
+      )}
+    </div>
+  )
+
+  if (loading) {
+    return isModal
+      ? <Modal isOpen onClose={onClose} title={t('members.memberDetails')}><Loading /></Modal>
+      : <Loading fullScreen />
+  }
 
   if (error) {
-    return (
+    const errorContent = (
       <div className="p-6">
         <div className="flex items-center gap-2 p-4 bg-red-50 border border-red-200 rounded text-red-700">
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
           <span className="text-sm">{error}</span>
         </div>
-        <Button variant="outline" className="mt-4" icon={<ArrowLeft className="w-4 h-4" />} onClick={() => navigate('/members')}>
+        <Button variant="outline" className="mt-4" icon={<ArrowLeft className="w-4 h-4" />} onClick={() => (onClose ? onClose() : navigate('/members'))}>
           {t('common.back')}
         </Button>
       </div>
+    )
+    return isModal
+      ? <Modal isOpen onClose={onClose} title={t('members.memberDetails')}>{errorContent}</Modal>
+      : errorContent
+  }
+
+  if (isModal) {
+    return (
+      <Modal
+        isOpen
+        onClose={onClose}
+        title={member?.full_name || t('members.memberDetails')}
+        subtitle={`KGID: ${member?.kgid}`}
+        maxWidth="max-w-5xl"
+      >
+        <div className="mb-4 flex justify-end">
+          <Button variant="outline" icon={<Pencil className="h-4 w-4" />} onClick={() => onEdit?.(member)}>
+            Edit Member
+          </Button>
+        </div>
+        {memberContent}
+      </Modal>
     )
   }
 
@@ -132,66 +275,7 @@ export default function MemberDetails() {
         }
       />
 
-      {/* Status badge */}
-      <div>
-        <span className={member?.status === 'Active' ? 'badge-active' : 'badge-inactive'}>
-          {member?.status}
-        </span>
-      </div>
-
-      {/* Personal Info */}
-      <SectionCard icon={User} title={t('members.sectionPersonal')}>
-        <InfoRow label={t('members.kgid')}        value={member?.kgid} />
-        <InfoRow label={t('members.fullName')}     value={member?.full_name} />
-        <InfoRow label={t('members.dob')}          value={member?.dob} />
-        <InfoRow label={t('members.gender')}       value={member?.gender} />
-        <InfoRow label={t('members.caste')}        value={member?.caste} />
-        <InfoRow label={t('members.subCaste')}     value={member?.sub_caste} />
-        <InfoRow label={t('members.category')}     value={member?.category} />
-      </SectionCard>
-
-      {/* Employment Info */}
-      <SectionCard icon={Briefcase} title={t('members.sectionEmployment')}>
-        <InfoRow label={t('members.designation')} value={member?.designation} />
-        <InfoRow label={t('members.station')}     value={member?.station_name || member?.ps_id} />
-        <InfoRow label={t('members.shareNo')}     value={member?.share_number} />
-        <InfoRow label={t('members.buckleNo')}    value={member?.buckle_number} />
-      </SectionCard>
-
-      {/* Membership Info */}
-      <SectionCard icon={FileText} title={t('members.sectionMembership')}>
-        <InfoRow label={t('members.feeTier')}        value={member?.mf_id} />
-        <InfoRow label={t('members.financialYear')}  value={member?.financial_year} />
-        <InfoRow label={t('members.financialMonth')} value={member?.financial_month} />
-        <InfoRow label="Created At"                  value={member?.created_at ? new Date(member.created_at).toLocaleDateString('en-IN') : '—'} />
-      </SectionCard>
-
-      {/* Banking Info — full account number visible only in detail view */}
-      <SectionCard icon={Landmark} title={t('members.sectionBanking')}>
-        <InfoRow label={t('members.bankAccount')} value={member?.bank_account_number} />
-        <InfoRow label={t('members.ifsc')}        value={member?.ifsc_code} />
-      </SectionCard>
-
-      <SectionCard icon={FileText} title="Member Documents">
-        {documents.length ? documents.map(item => (
-          <div key={item.doc_id} className="flex items-center justify-between gap-3 border-b border-gray-100 py-3 last:border-0">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-gray-800">{item.original_filename || `Document ${item.doc_id}`}</p>
-              <p className="text-xs text-gray-500">{item.stored_date}</p>
-            </div>
-            <button
-              type="button"
-              title="Download document"
-              onClick={() => handleDownload(item)}
-              className="inline-flex flex-shrink-0 items-center gap-1 rounded border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-            >
-              <Download className="h-3.5 w-3.5" /> Download
-            </button>
-          </div>
-        )) : (
-          <p className="px-5 py-4 text-sm text-gray-500">No documents uploaded.</p>
-        )}
-      </SectionCard>
+      {memberContent}
 
       <ConfirmDialog
         isOpen={confirmStatusChange}
