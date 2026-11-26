@@ -26,6 +26,7 @@ export default function OfficerLoanDrawer({
 
   const [history, setHistory] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [markingDueInstallment, setMarkingDueInstallment] = useState(null)
   const [activeTab, setActiveTab] = useState('history') // 'membership' | 'loans' | 'history'
   const [selectedLoanId, setSelectedLoanId] = useState(initialLoanId)
   const [historyColumnsOpen, setHistoryColumnsOpen] = useState(false)
@@ -62,6 +63,25 @@ export default function OfficerLoanDrawer({
       setLoading(false)
     }
   }, [kgid, initialLoanId])
+
+  const handleMarkDue = async (installmentNumber) => {
+    if (!activeLoan) return
+    setMarkingDueInstallment(installmentNumber)
+    try {
+      await loanService.recordPayment(activeLoan.loan_id, {
+        installment_number: installmentNumber,
+        paid_amount: 0,
+        payment_date: new Date().toISOString().slice(0, 10),
+        is_paid: false,
+        status: 'Due',
+      })
+      await fetchHistory()
+    } catch (err) {
+      toastError(err.message || t('common.errorSave'))
+    } finally {
+      setMarkingDueInstallment(null)
+    }
+  }
 
   useEffect(() => {
     if (isOpen && kgid) {
@@ -234,7 +254,7 @@ export default function OfficerLoanDrawer({
         payable_amount: formatNumberForPdf(paidAmount),
         paid_interest: formatNumberForPdf(paidInterest),
         paid_amount: formatNumberForPdf(paidAmount),
-        status: payment.is_paid ? 'Paid' : 'Projected',
+        status: payment.is_paid ? 'Paid' : (payment.status || 'Projected'),
       }
     })
   }
@@ -830,6 +850,11 @@ export default function OfficerLoanDrawer({
                 )}
 
                 {/* Transactional History Table */}
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] font-semibold text-slate-700" aria-label="Payment status color legend">
+                  <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-emerald-400 bg-emerald-200" />Paid</span>
+                  <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-red-400 bg-red-200" />Due</span>
+                  <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-amber-400 bg-amber-200" />Next upcoming</span>
+                </div>
                 <div className="overflow-hidden rounded-lg border border-slate-200 shadow-[0_6px_18px_rgba(15,41,66,0.05)]">
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[1180px] border-separate border-spacing-0 text-left text-xs">
@@ -851,10 +876,11 @@ export default function OfficerLoanDrawer({
                       <tbody>
                         {getHistoryRows().map((row) => {
                           const paidRow = row.status === 'Paid'
+                          const dueRow = row.status === 'Due'
                           const firstUnpaid = getHistoryRows().find((item) => item.status !== 'Paid')
                           const canReceive = firstUnpaid?.installment === row.installment
                           return (
-                          <tr key={row.installment} className={`border-b transition-colors ${paidRow ? 'border-emerald-100 bg-emerald-50/70' : canReceive ? 'border-amber-200 bg-amber-50/40 hover:bg-amber-50/80' : 'border-slate-100 bg-slate-50/30 text-slate-500'}`}>
+                          <tr key={row.installment} className={`border-b transition-colors ${paidRow ? 'border-emerald-300 bg-emerald-100' : dueRow ? 'border-red-300 bg-red-100' : canReceive ? 'border-amber-300 bg-amber-100' : 'border-slate-200 bg-white text-slate-700'}`}>
                             {visibleHistoryColumns.installment && <td className="border-r border-slate-100 px-2 py-2 text-center font-mono font-semibold">{row.installment}</td>}
                             {visibleHistoryColumns.payment_date && <td className="border-r border-slate-100 px-2 py-2 whitespace-nowrap">{row.payment_date}</td>}
                             {visibleHistoryColumns.opening_advance && <td className="border-r border-slate-100 px-2 py-2 text-right font-medium">{formatINR(row.opening_advance.replace(/,/g, ''))}</td>}
@@ -867,23 +893,39 @@ export default function OfficerLoanDrawer({
                             {visibleHistoryColumns.paid_amount && <td className="border-r border-slate-100 px-2 py-2 text-right font-semibold">{row.paid_amount === '-' ? '-' : formatINR(row.paid_amount.replace(/,/g, ''))}</td>}
                             {visibleHistoryColumns.status && (
                               <td className="px-2 py-2 text-center">
-                                <label className="inline-flex items-center gap-1.5">
-                                  <input
-                                    type="checkbox"
-                                    checked={paidRow}
-                                    disabled={!canReceive || paidRow}
-                                    onChange={() => {
-                                      if (canReceive) {
-                                        onRecordPayment?.(activeLoan, fetchHistory, null, row.installment)
-                                      }
-                                    }}
-                                    aria-label={`Installment ${row.installment} received status`}
-                                    className="h-4 w-4 accent-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
-                                  />
-                                  <span className={`text-[10px] font-bold ${paidRow ? 'text-emerald-700' : canReceive ? 'text-amber-700' : 'text-slate-400'}`}>
-                                    {paidRow ? 'Received' : canReceive ? 'Mark Received' : 'Not Received'}
-                                  </span>
-                                </label>
+                                {paidRow ? (
+                                  <span className="text-[10px] font-bold text-emerald-800">Received</span>
+                                ) : dueRow ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onRecordPayment?.(activeLoan, fetchHistory, null, row.installment)}
+                                    disabled={!onRecordPayment}
+                                    className="rounded border border-emerald-600 bg-emerald-700 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    Received
+                                  </button>
+                                ) : canReceive ? (
+                                  <div className="inline-flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => onRecordPayment?.(activeLoan, fetchHistory, null, row.installment)}
+                                      disabled={!onRecordPayment}
+                                      className="rounded border border-emerald-600 bg-emerald-700 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Mark Received
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMarkDue(row.installment)}
+                                      disabled={markingDueInstallment !== null}
+                                      className="rounded border border-red-500 bg-red-100 px-1.5 py-1 text-[10px] font-bold text-red-900 hover:bg-red-200 disabled:cursor-wait disabled:opacity-60"
+                                    >
+                                      {markingDueInstallment === row.installment ? 'Saving…' : 'Mark Due'}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-[10px] font-medium text-slate-500">{row.status}</span>
+                                )}
                               </td>
                             )}
                           </tr>

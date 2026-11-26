@@ -366,7 +366,9 @@ def record_loan_payment(
         schedule_row.payable_amount = principal_recovery + calculated_interest
         schedule_row.paid_amount = (payload.paid_amount or principal_recovery + calculated_interest) if payload.is_paid else Decimal("0.00")
         schedule_row.is_paid = payload.is_paid
-        schedule_row.status = payload.status.strip() if payload.is_paid else "Not Received"
+        schedule_row.status = payload.status.strip() if payload.is_paid else (
+            "Due" if payload.status.strip().lower() == "due" else "Not Received"
+        )
         schedule_row.payment_date = payload.payment_date if payload.is_paid else None
     else:
         payment = LoanPayment(
