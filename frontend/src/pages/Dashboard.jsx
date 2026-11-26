@@ -10,17 +10,17 @@ import memberService from '../services/memberService.js'
 import loanService from '../services/loanService.js'
 import policeStationService from '../services/policeStationService.js'
 
-const formatCurrency = (value) => new Intl.NumberFormat('en-IN', {
+const formatCurrency = (value, locale) => new Intl.NumberFormat(locale === 'kn-IN' ? 'en-IN' : locale, {
   style: 'currency',
   currency: 'INR',
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
 }).format(Number(value) || 0)
 
-function StatCard({ icon: Icon, label, value, tone, loading, currency = false, detail }) {
+function StatCard({ icon: Icon, label, value, tone, loading, currency = false, detail, locale, t }) {
   const displayValue = currency
-    ? formatCurrency(value)
-    : new Intl.NumberFormat('en-IN').format(value ?? 0)
+    ? formatCurrency(value, 'en-IN')
+    : new Intl.NumberFormat(locale).format(value ?? 0)
 
   return (
     <article className={`metric-card ${tone.border}`}>
@@ -44,7 +44,7 @@ function StatCard({ icon: Icon, label, value, tone, loading, currency = false, d
       </div>
       <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
-        {loading ? 'Updating records' : detail}
+        {loading ? t('dashboard.updatingRecords') : detail}
       </p>
     </article>
   )
@@ -76,8 +76,9 @@ function currentMonth() {
 }
 
 export default function Dashboard() {
-  const { t } = useLanguage()
+  const { t, language } = useLanguage()
   const navigate = useNavigate()
+  const locale = language === 'kn' ? 'kn-IN' : 'en-IN'
 
   const [stats, setStats] = useState({
     totalMembers: null,
@@ -111,14 +112,14 @@ export default function Dashboard() {
           totalRecoveries: loans.reduce((total, loan) => total + Number(loan.total_recovered ?? 0), 0),
           pendingBalance: loans.reduce((total, loan) => total + Number(loan.outstanding_balance ?? 0), 0),
         })
-      } catch (err) {
-        setError(err.message || 'Failed to load dashboard statistics.')
+      } catch {
+        setError(t('dashboard.loadDashboardError'))
       } finally {
         setLoading(false)
       }
     }
     fetchStats()
-  }, [])
+  }, [language])
 
   useEffect(() => {
     let active = true
@@ -132,20 +133,20 @@ export default function Dashboard() {
         ])
         if (active) {
           setScheduleAlerts([
-            { key: 'due', label: 'Installments marked due', count: due.total ?? due.items?.length ?? 0 },
-            { key: 'missing', label: 'Installment records missing', count: missing.total ?? missing.items?.length ?? 0 },
-            { key: 'waiting', label: 'Waiting on earlier installments', count: waiting.total ?? waiting.items?.length ?? 0 },
+            { key: 'due', label: t('dashboard.installmentsDue'), count: due.total ?? due.items?.length ?? 0 },
+            { key: 'missing', label: t('dashboard.missingInstallmentRecords'), count: missing.total ?? missing.items?.length ?? 0 },
+            { key: 'waiting', label: t('dashboard.waitingForEarlierInstallments'), count: waiting.total ?? waiting.items?.length ?? 0 },
           ])
         }
-      } catch (err) {
-        if (active) setScheduleError(err.message || 'Unable to load payment alerts.')
+      } catch {
+        if (active) setScheduleError(t('dashboard.loadPaymentAlertsError'))
       } finally {
         if (active) setScheduleLoading(false)
       }
     }
     fetchScheduleAlerts()
     return () => { active = false }
-  }, [])
+  }, [language])
 
   const sanctionedAmount = Number(stats.sanctionedLoans) || 0
   const recoveredAmount = Number(stats.totalRecoveries) || 0
@@ -161,7 +162,7 @@ export default function Dashboard() {
       value: stats.totalMembers,
       tone: { border: 'border-l-gov-primary', icon: 'bg-blue-50 text-gov-primary' },
       comingSoon: false,
-      detail: 'Registered personnel',
+      detail: t('dashboard.registeredPersonnel'),
     },
     {
       icon: Users,
@@ -169,7 +170,7 @@ export default function Dashboard() {
       value: stats.activeMembers,
       tone: { border: 'border-l-emerald-700', icon: 'bg-emerald-50 text-emerald-800' },
       comingSoon: false,
-      detail: 'Currently active',
+      detail: t('dashboard.currentlyActive'),
     },
     {
       icon: Building2,
@@ -177,7 +178,7 @@ export default function Dashboard() {
       value: stats.totalStations,
       tone: { border: 'border-l-sky-700', icon: 'bg-sky-50 text-sky-800' },
       comingSoon: false,
-      detail: 'Registered units',
+      detail: t('dashboard.registeredUnits'),
     },
     {
       icon: Banknote,
@@ -185,7 +186,7 @@ export default function Dashboard() {
       value: stats.sanctionedLoans,
       tone: { border: 'border-l-amber-600', icon: 'bg-amber-50 text-amber-800' },
       currency: true,
-      detail: 'Total principal sanctioned',
+      detail: t('dashboard.totalPrincipalSanctioned'),
     },
     {
       icon: TrendingUp,
@@ -193,7 +194,7 @@ export default function Dashboard() {
       value: stats.totalRecoveries,
       tone: { border: 'border-l-teal-700', icon: 'bg-teal-50 text-teal-800' },
       currency: true,
-      detail: 'Principal recovered',
+      detail: t('dashboard.principalRecovered'),
     },
     {
       icon: AlertCircle,
@@ -201,7 +202,7 @@ export default function Dashboard() {
       value: stats.pendingBalance,
       tone: { border: 'border-l-rose-700', icon: 'bg-rose-50 text-rose-800' },
       currency: true,
-      detail: 'Outstanding principal',
+      detail: t('dashboard.outstandingPrincipal'),
     },
   ]
 
@@ -218,6 +219,7 @@ export default function Dashboard() {
       <PageHeader
         title={t('dashboard.title')}
         subtitle={t('dashboard.subtitle')}
+        eyebrow={t('dashboard.eyebrow')}
         actions={
           <button
             type="button"
@@ -245,17 +247,17 @@ export default function Dashboard() {
             </span>
             <div className="min-w-0">
               <h2 id="overview-heading" className="text-base font-bold leading-tight sm:text-lg">{t('dashboard.systemOverview')}</h2>
-              <p className="mt-1 text-xs leading-relaxed text-slate-200">Membership and police-station records at a glance.</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-200">{t('dashboard.overviewDescription')}</p>
             </div>
           </div>
           <span className="inline-flex w-fit items-center gap-2 rounded-sm border border-white/20 bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-slate-100">
             <span className={`h-1.5 w-1.5 rounded-full ${loading ? 'bg-amber-300' : error ? 'bg-red-300' : 'bg-emerald-300'}`} />
-            {loading ? 'Updating records' : error ? 'Service needs attention' : 'Records connected'}
+            {loading ? t('dashboard.updatingRecords') : error ? t('dashboard.serviceNeedsAttention') : t('dashboard.recordsConnected')}
           </span>
         </div>
         <div className="grid grid-cols-2 gap-2 bg-slate-50/70 p-2 sm:grid-cols-3 sm:gap-3 sm:p-3 xl:grid-cols-6">
           {statCards.map((card) => (
-            <StatCard key={card.label} {...card} loading={loading} />
+            <StatCard key={card.label} {...card} loading={loading} locale={locale} t={t} />
           ))}
         </div>
       </section>
@@ -263,7 +265,7 @@ export default function Dashboard() {
       <section aria-labelledby="quick-actions-heading" className="space-y-3">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <p className="text-[10px] font-bold uppercase text-gov-primary">Common tasks</p>
+            <p className="text-[10px] font-bold uppercase text-gov-primary">{t('dashboard.commonTasks')}</p>
             <h2 id="quick-actions-heading" className="mt-0.5 text-base font-bold text-gov-navy">{t('dashboard.quickActions')}</h2>
           </div>
         </div>
@@ -278,23 +280,23 @@ export default function Dashboard() {
         <section aria-labelledby="repayment-progress-heading" className="section-card min-w-0 p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-bold uppercase text-gov-primary">Loan portfolio</p>
-              <h2 id="repayment-progress-heading" className="mt-0.5 text-base font-bold text-gov-navy">Repayment progress</h2>
+              <p className="text-[10px] font-bold uppercase text-gov-primary">{t('dashboard.loanPortfolio')}</p>
+              <h2 id="repayment-progress-heading" className="mt-0.5 text-base font-bold text-gov-navy">{t('dashboard.repaymentProgress')}</h2>
             </div>
             <TrendingUp className="mt-1 h-5 w-5 shrink-0 text-emerald-700" aria-hidden="true" />
           </div>
           {loading ? (
-            <div className="mt-5 h-16 animate-pulse rounded bg-slate-100" aria-label="Loading repayment progress" />
+            <div className="mt-5 h-16 animate-pulse rounded bg-slate-100" aria-label={t('dashboard.loadingRepaymentProgress')} />
           ) : (
             <>
               <div className="mt-5 flex items-baseline justify-between gap-3">
-                <span className="text-sm font-semibold text-slate-600">Principal recovered</span>
+                <span className="text-sm font-semibold text-slate-600">{t('dashboard.principalRecovered')}</span>
                 <span className="text-lg font-bold tabular-nums text-gov-navy">{recoveryPercent.toFixed(1)}%</span>
               </div>
               <div
                 className="mt-2 h-3 overflow-hidden rounded-full bg-slate-100"
                 role="progressbar"
-                aria-label="Principal recovered"
+                aria-label={t('dashboard.principalRecovered')}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={Number(recoveryPercent.toFixed(1))}
@@ -303,12 +305,12 @@ export default function Dashboard() {
               </div>
               <div className="mt-4 grid grid-cols-2 gap-4">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-slate-500">Recovered</p>
-                  <p className="mt-1 truncate text-sm font-bold text-emerald-800" title={formatCurrency(recoveredAmount)}>{formatCurrency(recoveredAmount)}</p>
+                  <p className="text-xs font-semibold text-slate-500">{t('dashboard.recovered')}</p>
+                  <p className="mt-1 truncate text-sm font-bold text-emerald-800" title={formatCurrency(recoveredAmount, locale)}>{formatCurrency(recoveredAmount, locale)}</p>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-slate-500">Remaining</p>
-                  <p className="mt-1 truncate text-sm font-bold text-gov-navy" title={formatCurrency(stats.pendingBalance)}>{formatCurrency(stats.pendingBalance)}</p>
+                  <p className="text-xs font-semibold text-slate-500">{t('dashboard.remaining')}</p>
+                  <p className="mt-1 truncate text-sm font-bold text-gov-navy" title={formatCurrency(stats.pendingBalance, locale)}>{formatCurrency(stats.pendingBalance, locale)}</p>
                 </div>
               </div>
             </>
@@ -318,13 +320,13 @@ export default function Dashboard() {
         <section aria-labelledby="payment-alerts-heading" className="section-card min-w-0 p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-bold uppercase text-gov-primary">Current month</p>
-              <h2 id="payment-alerts-heading" className="mt-0.5 text-base font-bold text-gov-navy">Payment alerts</h2>
+              <p className="text-[10px] font-bold uppercase text-gov-primary">{t('dashboard.currentMonth')}</p>
+              <h2 id="payment-alerts-heading" className="mt-0.5 text-base font-bold text-gov-navy">{t('dashboard.paymentAlerts')}</h2>
             </div>
             <AlertCircle className="mt-1 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
           </div>
           {scheduleLoading ? (
-            <div className="mt-5 h-16 animate-pulse rounded bg-slate-100" aria-label="Loading payment alerts" />
+            <div className="mt-5 h-16 animate-pulse rounded bg-slate-100" aria-label={t('dashboard.loadingPaymentAlerts')} />
           ) : scheduleError ? (
             <p role="alert" className="mt-4 text-sm text-rose-700">{scheduleError}</p>
           ) : (
@@ -344,7 +346,7 @@ export default function Dashboard() {
               ) : (
                 <p className="mt-4 flex items-center gap-2 text-sm text-emerald-800">
                   <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  No payment issues found for this month.
+                  {t('dashboard.noPaymentIssues')}
                 </p>
               )}
               <button
@@ -352,7 +354,7 @@ export default function Dashboard() {
                 onClick={() => navigate('/schedules')}
                 className="mt-3 inline-flex items-center gap-1.5 text-sm font-bold text-gov-primary hover:text-gov-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gov-primary"
               >
-                Review schedules <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                {t('dashboard.reviewSchedules')} <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </button>
             </>
           )}
@@ -362,7 +364,7 @@ export default function Dashboard() {
       <section aria-labelledby="activity-heading" className="section-card overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
           <div>
-            <p className="text-[10px] font-bold uppercase text-gov-primary">Audit overview</p>
+            <p className="text-[10px] font-bold uppercase text-gov-primary">{t('dashboard.auditOverview')}</p>
             <h2 id="activity-heading" className="mt-0.5 text-base font-bold text-gov-navy">{t('dashboard.recentActivity')}</h2>
           </div>
           <Clock3 className="h-5 w-5 text-slate-400" aria-hidden="true" />

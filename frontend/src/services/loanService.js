@@ -14,6 +14,33 @@ export const loanService = {
     return response.data;
   },
 
+  getAllLoans: async () => {
+    const pageSize = 500;
+    const firstPage = await loanService.getLoans({ page: 1, size: pageSize });
+    const items = firstPage.items ?? [];
+    const pageCount = Math.ceil((firstPage.total ?? items.length) / pageSize);
+    if (pageCount <= 1) return items;
+
+    const remainingPages = await Promise.all(
+      Array.from({ length: pageCount - 1 }, (_, index) =>
+        loanService.getLoans({ page: index + 2, size: pageSize }),
+      ),
+    );
+    return items.concat(...remainingPages.map((result) => result.items ?? []));
+  },
+
+  // GET /api/v1/loans/schedules
+  getMonthlySchedules: async ({ month, search = '', page = 1, size = 50, schedule_status = '', ps_id = '', loan_type = '' } = {}) => {
+    const params = { month, page, size };
+    if (search && search.trim()) params.search = search.trim();
+    if (schedule_status) params.schedule_status = schedule_status;
+    if (ps_id) params.ps_id = ps_id;
+    if (loan_type) params.loan_type = loan_type;
+
+    const response = await api.get('/api/v1/loans/schedules', { params });
+    return response.data;
+  },
+
   // GET /api/v1/loans/{loan_id}
   getLoanById: async (loanId) => {
     const response = await api.get(`/api/v1/loans/${loanId}`);
