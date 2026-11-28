@@ -17,6 +17,24 @@ function formatINR(val) {
   return '₹' + Number(val).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
+function formatLedgerDate(value) {
+  if (!value) return '—'
+  const [year, month, day] = String(value).slice(0, 10).split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function formatSubscriptionPeriod(year, month) {
+  if (!year || !month) return '—'
+  return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString('en-IN', {
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
 const MONTH_INDEX = {
   january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
   july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
@@ -71,6 +89,7 @@ export default function OfficerLoanDrawer({
 
   const [history, setHistory] = useState(null)
   const [memberDocuments, setMemberDocuments] = useState([])
+  const [membershipRecords, setMembershipRecords] = useState([])
   const [membershipFeeTier, setMembershipFeeTier] = useState(null)
   const [loading, setLoading] = useState(false)
   const [markingDueInstallment, setMarkingDueInstallment] = useState(null)
@@ -100,13 +119,15 @@ export default function OfficerLoanDrawer({
     if (!kgid) return
     setLoading(true)
     try {
-      const [data, documents, feeResponse] = await Promise.all([
+      const [data, documents, feeResponse, records] = await Promise.all([
         loanService.getUserHistory(kgid),
         memberService.getMemberDocuments(kgid).catch(() => []),
         memberService.getFeeTiers().catch(() => null),
+        memberService.getMembershipRecords(kgid).catch(() => []),
       ])
       setHistory(data)
       setMemberDocuments(documents)
+      setMembershipRecords(Array.isArray(records) ? records : [])
       const feeTiers = feeResponse?.items ?? feeResponse?.data ?? feeResponse ?? []
       setMembershipFeeTier(feeTiers.find((tier) => Number(tier.mf_id) === Number(data?.user?.mf_id)) ?? null)
       if (initialLoanId) {
@@ -217,6 +238,14 @@ export default function OfficerLoanDrawer({
   const accumulatedShareAmount = contributionMonths === null ? null : monthlySubscriptionAmount * contributionMonths
   const loans = history?.loans || []
   const allPayments = history?.payments || []
+  const membershipAssignments = membershipRecords.filter((record) => record.record_type === 'membership')
+  const assignmentById = new Map(membershipAssignments.map((record) => [record.record_id, record]))
+  const shareTransactions = membershipRecords
+    .filter((record) => record.record_type === 'subscription')
+    .sort((left, right) => (right.transaction_date || '').localeCompare(left.transaction_date || ''))
+  const earliestMembership = [...membershipAssignments]
+    .sort((left, right) => (left.effective_from || '').localeCompare(right.effective_from || ''))[0]
+  const membershipStarted = earliestMembership?.effective_from || user?.membership_start_date
 
   const activeLoan = loans.find((l) => l.loan_id === selectedLoanId) || loans[0] || null
   const loanPayments = activeLoan
@@ -680,7 +709,8 @@ export default function OfficerLoanDrawer({
                     <h4 className="text-xs font-bold uppercase tracking-wide text-gov-primary">Shareholding &amp; Subscription Ledger</h4>
                     <p className="mt-0.5 text-xs text-slate-500">Calculated from the assigned fee tier and membership start month.</p>
                   </div>
-                  <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
+                    <LedgerMetric label={t('members.membershipStarted')} value={formatLedgerDate(membershipStarted)} />
                     <LedgerMetric label={t('members.shareNo')} value={user.share_number || '—'} />
                     <LedgerMetric label={t('members.monthlySubscriptionAmount')} value={membershipFeeTier ? formatINR(monthlySubscriptionAmount) : t('members.feeTierUnavailable')} emphasis />
                     <LedgerMetric label={t('members.contributionMonths')} value={contributionMonths === null ? '—' : t('members.monthsCount', { count: contributionMonths })} />
@@ -717,6 +747,62 @@ export default function OfficerLoanDrawer({
                     <DetailItem label={t('members.ifsc')} value={user.ifsc_code} mono />
                   </DetailSection>
                 </div>
+
+                <section className="overflow-hidden rounded-md border border-slate-200 bg-white">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <FileSpreadsheet className="h-4 w-4 text-gov-primary" />
+                      <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wide text-gov-primary">
+                          {t('members.shareTransactionsTitle')}
+                        </h4>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {t('members.shareTransactionsDescription')}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="rounded-sm bg-white px-2 py-1 text-xs font-semibold text-slate-600">
+                      {shareTransactions.length}
+                    </span>
+                  </div>
+                  {shareTransactions.length === 0 ? (
+                    <p className="px-4 py-5 text-sm text-slate-500">{t('members.noShareTransactions')}</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
+                        <thead className="bg-white text-[10px] uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="px-4 py-3 font-semibold">{t('members.transactionDate')}</th>
+                            <th className="px-4 py-3 font-semibold">{t('members.subscriptionPeriod')}</th>
+                            <th className="px-4 py-3 font-semibold">{t('members.feeTier')}</th>
+                            <th className="px-4 py-3 text-right font-semibold">{t('members.amount')}</th>
+                            <th className="px-4 py-3 font-semibold">{t('members.membershipStarted')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {shareTransactions.map((transaction) => {
+                            const assignment = assignmentById.get(transaction.membership_record_id)
+                            return (
+                              <tr key={transaction.record_id} className="text-slate-700">
+                                <td className="whitespace-nowrap px-4 py-3">{formatLedgerDate(transaction.transaction_date)}</td>
+                                <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-900">
+                                  {formatSubscriptionPeriod(transaction.year, transaction.month)}
+                                </td>
+                                <td className="px-4 py-3">Tier {transaction.mf_id}</td>
+                                <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-gov-primary">
+                                  {formatINR(transaction.amount)}
+                                </td>
+                                <td className="whitespace-nowrap px-4 py-3">
+                                  {formatLedgerDate(assignment?.effective_from)}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
 
                 <section className="overflow-hidden rounded-md border border-slate-200 bg-white">
                   <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">

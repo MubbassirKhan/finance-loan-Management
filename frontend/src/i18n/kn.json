@@ -245,7 +245,14 @@
     "personalInfo": "ವೈಯಕ್ತಿಕ ಮಾಹಿತಿ",
     "employmentInfo": "ಇಲಾಖಾ ಮತ್ತು ಠಾಣೆ ಮಾಹಿತಿ",
     "bankingInfo": "ಬ್ಯಾಂಕಿಂಗ್ ಮತ್ತು ಹಣಕಾಸು ವಿವರಗಳು",
-    "membershipPeriod": "ಸಂಘ ಸದಸ್ಯತ್ವ ವಿವರಗಳು"
+    "membershipPeriod": "ಸಂಘ ಸದಸ್ಯತ್ವ ವಿವರಗಳು",
+    "membershipStarted": "ಸದಸ್ಯತ್ವ ಪ್ರಾರಂಭ ದಿನಾಂಕ",
+    "shareTransactionsTitle": "ಷೇರು ಚಂದಾದಾರಿಕೆ ವ್ಯವಹಾರಗಳು",
+    "shareTransactionsDescription": "ಈ ಸದಸ್ಯರ ಮಾಸಿಕ ಷೇರು ಚಂದಾದಾರಿಕೆ ದಾಖಲೆಗಳು.",
+    "noShareTransactions": "ಇನ್ನೂ ಯಾವುದೇ ಷೇರು ಚಂದಾದಾರಿಕೆ ವ್ಯವಹಾರಗಳಿಲ್ಲ.",
+    "transactionDate": "ವ್ಯವಹಾರದ ದಿನಾಂಕ",
+    "subscriptionPeriod": "ಚಂದಾದಾರಿಕೆ ಅವಧಿ",
+    "amount": "ಮೊತ್ತ"
   },
   "stations": {
     "title": "ಪೊಲೀಸ್ ಠಾಣೆಗಳು ಮತ್ತು ಘಟಕಗಳು",

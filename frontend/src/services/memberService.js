@@ -33,6 +33,12 @@ export const memberService = {
     return response.data;
   },
 
+  // GET /api/v1/users/{kgid}/membership-records
+  getMembershipRecords: async (kgid) => {
+    const response = await api.get(`/api/v1/users/${encodeURIComponent(kgid)}/membership-records`);
+    return response.data;
+  },
+
   // POST /api/v1/users
   createMember: async (memberData) => {
     const response = await api.post('/api/v1/users', memberData);

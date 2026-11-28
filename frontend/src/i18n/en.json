@@ -271,6 +271,13 @@
     "contributionMonths": "Contribution Months",
     "monthsCount": "{{count}} month(s)",
     "totalShareAmount": "Total Share Amount",
+    "membershipStarted": "Membership Started",
+    "shareTransactionsTitle": "Share Subscription Transactions",
+    "shareTransactionsDescription": "Monthly share subscription records for this member.",
+    "noShareTransactions": "No share subscription transactions recorded yet.",
+    "transactionDate": "Transaction Date",
+    "subscriptionPeriod": "Subscription Period",
+    "amount": "Amount",
     "feeTierUnavailable": "Fee tier unavailable",
     "shareFee": "Share Fee",
     "membershipFee": "Membership Fee"
