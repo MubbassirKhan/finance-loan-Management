@@ -5,6 +5,7 @@ import {
   Users,
   ShieldCheck,
   CreditCard,
+  Coins,
   HandCoins,
   CalendarDays,
   FileSpreadsheet,
@@ -43,6 +44,11 @@ export const Sidebar = ({ collapsed = false, onCollapsedChange = () => {}, mobil
       to: '/membership-fees',
       label: t('nav.membershipFees', 'Membership Fees'),
       icon: CreditCard,
+    },
+    {
+      to: '/dividends',
+      label: t('nav.dividends', 'Dividends'),
+      icon: Coins,
     },
     {
       to: '/police-stations',

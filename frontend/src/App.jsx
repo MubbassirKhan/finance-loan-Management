@@ -24,6 +24,7 @@ const StationForm = lazy(() => import('./pages/police-stations/StationForm.jsx')
 
 // Membership Fees
 const MembershipFees = lazy(() => import('./pages/membership-fees/MembershipFees.jsx'))
+const Dividends = lazy(() => import('./pages/Dividends.jsx'))
 
 // Loans / Payments / Documents / Reports (Coming Soon)
 const LoanList     = lazy(() => import('./pages/loans/LoanList.jsx'))
@@ -91,6 +92,7 @@ function App() {
 
           {/* Membership Fees */}
           <Route path="/membership-fees" element={<MembershipFees />} />
+          <Route path="/dividends" element={<Dividends />} />
 
           {/* Loans */}
           <Route path="/loans" element={<LoanList />} />

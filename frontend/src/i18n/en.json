@@ -11,6 +11,7 @@
     "members": "Members",
     "policeStations": "Police Stations",
     "membershipFees": "Membership Fees",
+    "dividends": "Dividends",
     "loans": "Loans",
     "schedules": "Schedules",
     "loanPayments": "Loan Payments",
@@ -415,6 +416,13 @@
       "Festival Advance": "Festival Advance",
       "Education Assistance Advance": "Education Assistance Advance"
     }
+  },
+  "dividends": {
+    "title": "Dividends",
+    "subtitle": "Manage member dividend declarations and distributions.",
+    "comingSoon": "Dividend Management – Coming Soon",
+    "comingSoonKn": "ಲಾಭಾಂಶ ನಿರ್ವಹಣೆ – ಶೀಘ್ರದಲ್ಲೇ ಲಭ್ಯ",
+    "comingSoonDesc": "Dividend calculations, approvals, and distribution tracking will be available in a future release."
   },
   "payments": {
     "title": "Loan Payment Recovery",
