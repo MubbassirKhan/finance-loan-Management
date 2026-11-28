@@ -6,6 +6,7 @@ import Button from '../../components/common/Button.jsx'
 import ConfirmDialog from '../../components/common/ConfirmDialog.jsx'
 import MemberCreate from './MemberCreate.jsx'
 import MemberDetails from './MemberDetails.jsx'
+import OfficerLoanDrawer from '../loans/OfficerLoanDrawer.jsx'
 import { useLanguage } from '../../context/LanguageContext.jsx'
 import { useToast } from '../../context/ToastContext.jsx'
 import memberService from '../../services/memberService.js'
@@ -47,6 +48,7 @@ export default function MemberList() {
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false)
   const [exporting, setExporting] = useState('')
   const [memberDialog, setMemberDialog] = useState(null)
+  const [memberDrawerKgid, setMemberDrawerKgid] = useState(null)
   const columnsMenuRef = useRef(null)
   const columnsTriggerRef = useRef(null)
 
@@ -409,6 +411,8 @@ export default function MemberList() {
         page={page}
         totalPages={totalPages}
         onPageChange={setPage}
+        onRowClick={(member) => setMemberDrawerKgid(member.kgid)}
+        getRowLabel={(member) => `Open full record for ${member.full_name}`}
       />
 
       <ConfirmDialog
@@ -452,6 +456,12 @@ export default function MemberList() {
           onUpdated={fetchMembers}
         />
       )}
+      <OfficerLoanDrawer
+        isOpen={Boolean(memberDrawerKgid)}
+        onClose={() => setMemberDrawerKgid(null)}
+        kgid={memberDrawerKgid}
+        initialTab="membership"
+      />
     </div>
   )
 }

@@ -17,6 +17,25 @@ function formatINR(val) {
   return '₹' + Number(val).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
+const MONTH_INDEX = {
+  january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
+  july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
+}
+
+function getShareContributionMonths(member) {
+  const year = Number(String(member?.financial_year || '').match(/\d{4}/)?.[0])
+  const month = MONTH_INDEX[String(member?.financial_month || '').trim().toLowerCase()]
+  const fallback = member?.created_at ? new Date(member.created_at) : null
+  const start = Number.isFinite(year) && month !== undefined
+    ? new Date(year, month, 1)
+    : fallback
+
+  if (!start || Number.isNaN(start.getTime())) return null
+  const today = new Date()
+  const elapsedMonths = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth())
+  return elapsedMonths < 0 ? 0 : Math.max(1, elapsedMonths)
+}
+
 function getScheduleMonth(startMonth, installmentOffset) {
   const start = String(startMonth || '').trim()
   const nameMatch = start.match(/^([A-Za-z]+)\s+(\d{4})$/)
@@ -44,6 +63,7 @@ export default function OfficerLoanDrawer({
   onClose,
   kgid,
   initialLoanId = null,
+  initialTab = 'history',
   onRecordPayment,
 }) {
   const { t } = useLanguage()
@@ -51,12 +71,13 @@ export default function OfficerLoanDrawer({
 
   const [history, setHistory] = useState(null)
   const [memberDocuments, setMemberDocuments] = useState([])
+  const [membershipFeeTier, setMembershipFeeTier] = useState(null)
   const [loading, setLoading] = useState(false)
   const [markingDueInstallment, setMarkingDueInstallment] = useState(null)
   const [memberDocumentLoading, setMemberDocumentLoading] = useState(null)
   const [memberDocumentPreview, setMemberDocumentPreview] = useState(null)
   const [memberEditOpen, setMemberEditOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState('history') // 'membership' | 'loans' | 'history'
+  const [activeTab, setActiveTab] = useState(initialTab) // 'membership' | 'loans' | 'history'
   const [selectedLoanId, setSelectedLoanId] = useState(initialLoanId)
   const [historyColumnsOpen, setHistoryColumnsOpen] = useState(false)
   const [attachmentPreview, setAttachmentPreview] = useState(null)
@@ -79,12 +100,15 @@ export default function OfficerLoanDrawer({
     if (!kgid) return
     setLoading(true)
     try {
-      const [data, documents] = await Promise.all([
+      const [data, documents, feeResponse] = await Promise.all([
         loanService.getUserHistory(kgid),
         memberService.getMemberDocuments(kgid).catch(() => []),
+        memberService.getFeeTiers().catch(() => null),
       ])
       setHistory(data)
       setMemberDocuments(documents)
+      const feeTiers = feeResponse?.items ?? feeResponse?.data ?? feeResponse ?? []
+      setMembershipFeeTier(feeTiers.find((tier) => Number(tier.mf_id) === Number(data?.user?.mf_id)) ?? null)
       if (initialLoanId) {
         setSelectedLoanId(initialLoanId)
       } else if (data?.loans?.length > 0) {
@@ -154,10 +178,10 @@ export default function OfficerLoanDrawer({
 
   useEffect(() => {
     if (isOpen && kgid) {
-      setActiveTab('history')
+      setActiveTab(initialTab)
       fetchHistory()
     }
-  }, [isOpen, kgid, fetchHistory])
+  }, [isOpen, kgid, initialTab, fetchHistory])
 
   // Escape key close
   useEffect(() => {
@@ -188,6 +212,9 @@ export default function OfficerLoanDrawer({
   if (!isOpen) return null
 
   const user = history?.user
+  const contributionMonths = getShareContributionMonths(user)
+  const monthlySubscriptionAmount = Number(membershipFeeTier?.share_subscription_fee ?? 0)
+  const accumulatedShareAmount = contributionMonths === null ? null : monthlySubscriptionAmount * contributionMonths
   const loans = history?.loans || []
   const allPayments = history?.payments || []
 
@@ -626,6 +653,41 @@ export default function OfficerLoanDrawer({
                   </div>
                 </section>
 
+                <section className="overflow-hidden rounded-md border border-amber-200 bg-amber-50/70">
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-bold text-amber-900">Police Credit Co-operative Society Records</p>
+                      <p className="mt-0.5 text-xs text-slate-600">Membership record, shareholding and subscription ledger</p>
+                    </div>
+                    <span className="rounded-sm bg-white px-2 py-1 text-xs font-semibold text-gov-primary">Tier {user.mf_id}{membershipFeeTier?.description ? ` · ${membershipFeeTier.description}` : ''}</span>
+                  </div>
+                </section>
+
+                <section className="overflow-hidden rounded-md border border-slate-200 bg-white">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <h4 className="text-xs font-bold uppercase tracking-wide text-slate-700">Member Identification</h4>
+                  </div>
+                  <dl className="grid grid-cols-1 gap-x-6 px-5 py-1 sm:grid-cols-2 lg:grid-cols-4">
+                    <DetailItem label="Official Name" value={user.full_name} />
+                    <DetailItem label={t('members.kgid')} value={user.kgid} mono />
+                    <DetailItem label={t('members.designation')} value={user.designation} />
+                    <DetailItem label={t('members.station')} value={user.station_name || activeLoan?.station_name} />
+                  </dl>
+                </section>
+
+                <section className="overflow-hidden rounded-md border border-slate-200 bg-white">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <h4 className="text-xs font-bold uppercase tracking-wide text-gov-primary">Shareholding &amp; Subscription Ledger</h4>
+                    <p className="mt-0.5 text-xs text-slate-500">Calculated from the assigned fee tier and membership start month.</p>
+                  </div>
+                  <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <LedgerMetric label={t('members.shareNo')} value={user.share_number || '—'} />
+                    <LedgerMetric label={t('members.monthlySubscriptionAmount')} value={membershipFeeTier ? formatINR(monthlySubscriptionAmount) : t('members.feeTierUnavailable')} emphasis />
+                    <LedgerMetric label={t('members.contributionMonths')} value={contributionMonths === null ? '—' : t('members.monthsCount', { count: contributionMonths })} />
+                    <LedgerMetric label={t('members.totalShareAmount')} value={accumulatedShareAmount === null || !membershipFeeTier ? '—' : formatINR(accumulatedShareAmount)} emphasis />
+                  </div>
+                </section>
+
                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                   <DetailSection icon={User} title={t('members.sectionPersonal')}>
                     <DetailItem label={t('members.dob')} value={user.dob} />
@@ -643,9 +705,11 @@ export default function OfficerLoanDrawer({
                   </DetailSection>
 
                   <DetailSection icon={HandCoins} title={t('members.sectionMembership')}>
-                    <DetailItem label={t('members.feeTier')} value={user.mf_id} />
+                    <DetailItem label={t('members.feeTier')} value={membershipFeeTier?.description ? `${t('members.feeTier')} ${user.mf_id} — ${membershipFeeTier.description}` : user.mf_id} />
                     <DetailItem label={t('members.financialYear')} value={user.financial_year} />
                     <DetailItem label={t('members.financialMonth')} value={user.financial_month} />
+                    <DetailItem label={t('members.shareFee')} value={membershipFeeTier ? formatINR(membershipFeeTier.share_fee) : '—'} />
+                    <DetailItem label={t('members.membershipFee')} value={membershipFeeTier ? formatINR(membershipFeeTier.membership_fee) : '—'} />
                   </DetailSection>
 
                   <DetailSection icon={Landmark} title={t('members.sectionBanking')}>
@@ -1196,6 +1260,15 @@ function DetailSection({ icon: Icon, title, children }) {
       </div>
       <dl className="grid grid-cols-2 gap-x-5 px-4 py-1 sm:grid-cols-3">{children}</dl>
     </section>
+  )
+}
+
+function LedgerMetric({ label, value, emphasis = false }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className={`mt-1 text-base font-bold ${emphasis ? 'text-gov-primary' : 'text-slate-900'}`}>{value}</p>
+    </div>
   )
 }
 

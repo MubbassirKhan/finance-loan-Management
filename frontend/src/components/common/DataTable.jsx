@@ -11,6 +11,8 @@ export const DataTable = ({
   size = 20,
   totalPages: totalPagesProp,  // allow caller to supply pre-computed totalPages
   onPageChange,
+  onRowClick,
+  getRowLabel,
   emptyMessage,
   className = '',
 }) => {
@@ -55,7 +57,22 @@ export const DataTable = ({
               </tr>
             ) : (
               data.map((row, rowIdx) => (
-                <tr key={rowIdx} className="group border-b border-slate-100 transition-colors even:bg-slate-50/80 hover:bg-blue-50/70">
+                <tr
+                  key={rowIdx}
+                  onClick={(event) => {
+                    if (!onRowClick || event.target.closest('button, a, input, select, textarea, label')) return
+                    onRowClick(row, rowIdx)
+                  }}
+                  onKeyDown={(event) => {
+                    if (!onRowClick || (event.key !== 'Enter' && event.key !== ' ')) return
+                    event.preventDefault()
+                    onRowClick(row, rowIdx)
+                  }}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  role={onRowClick ? 'button' : undefined}
+                  aria-label={onRowClick ? getRowLabel?.(row) || 'Open record details' : undefined}
+                  className={`group border-b border-slate-100 transition-colors even:bg-slate-50/80 hover:bg-blue-50/70 ${onRowClick ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gov-primary' : ''}`}
+                >
                   {columns.map((col, colIdx) => (
                     <td
                       key={colIdx}

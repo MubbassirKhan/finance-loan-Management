@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Activity, AlertCircle, ArrowRight, ArrowUpRight, Banknote, Building2, CheckCircle2,
-  Clock3, Eye, FileText, PlusCircle, TrendingUp, UserPlus, Users
+  Activity, AlertCircle, ArrowRight, ArrowUpRight, Banknote, BarChart3, Building2,
+  CheckCircle2, ClipboardCheck, Clock3, Eye, FileText, Landmark, PlusCircle,
+  RefreshCw, ShieldCheck, TrendingUp, UserPlus, Users
 } from 'lucide-react'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { useLanguage } from '../context/LanguageContext.jsx'
@@ -75,6 +76,25 @@ function currentMonth() {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
+function Insight({ icon: Icon, tone, title, description, action, onAction }) {
+  return (
+    <li className="flex gap-3 py-3 first:pt-0 last:pb-0">
+      <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${tone}`}>
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold text-slate-800">{title}</p>
+        <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{description}</p>
+        {action && (
+          <button type="button" onClick={onAction} className="mt-1.5 inline-flex items-center gap-1 text-xs font-bold text-gov-primary hover:text-gov-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gov-primary">
+            {action}<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        )}
+      </div>
+    </li>
+  )
+}
+
 export default function Dashboard() {
   const { t, language } = useLanguage()
   const navigate = useNavigate()
@@ -93,60 +113,57 @@ export default function Dashboard() {
   const [scheduleAlerts, setScheduleAlerts] = useState([])
   const [scheduleLoading, setScheduleLoading] = useState(true)
   const [scheduleError, setScheduleError] = useState(null)
+  const [lastUpdated, setLastUpdated] = useState(null)
+
+  const refreshDashboard = useCallback(async () => {
+    setError(null)
+    setScheduleError(null)
+    setLoading(true)
+    setScheduleLoading(true)
+    try {
+      const [membersRes, activeMembersRes, stationsRes, loans] = await Promise.all([
+        memberService.getMembers({ page: 1, size: 1 }),
+        memberService.getMembers({ page: 1, size: 1, status: 'Active' }),
+        policeStationService.getStations({ page: 1, size: 1 }),
+        loanService.getAllLoans(),
+      ])
+      setStats({
+        totalMembers: membersRes.total_count ?? membersRes.total ?? 0,
+        activeMembers: activeMembersRes.total_count ?? activeMembersRes.total ?? 0,
+        totalStations: stationsRes.total_count ?? stationsRes.total ?? 0,
+        sanctionedLoans: loans.reduce((total, loan) => total + Number(loan.sanction_amount ?? 0), 0),
+        totalRecoveries: loans.reduce((total, loan) => total + Number(loan.total_recovered ?? 0), 0),
+        pendingBalance: loans.reduce((total, loan) => total + Number(loan.outstanding_balance ?? 0), 0),
+      })
+    } catch {
+      setError(t('dashboard.loadDashboardError'))
+    } finally {
+      setLoading(false)
+    }
+
+    try {
+      const month = currentMonth()
+      const [due, missing, waiting] = await Promise.all([
+        loanService.getMonthlySchedules({ month, schedule_status: 'Due', page: 1, size: 1 }),
+        loanService.getMonthlySchedules({ month, schedule_status: 'Missing', page: 1, size: 1 }),
+        loanService.getMonthlySchedules({ month, schedule_status: 'Waiting', page: 1, size: 1 }),
+      ])
+      setScheduleAlerts([
+        { key: 'due', label: t('dashboard.installmentsDue'), count: due.total ?? due.items?.length ?? 0 },
+        { key: 'missing', label: t('dashboard.missingInstallmentRecords'), count: missing.total ?? missing.items?.length ?? 0 },
+        { key: 'waiting', label: t('dashboard.waitingForEarlierInstallments'), count: waiting.total ?? waiting.items?.length ?? 0 },
+      ])
+    } catch {
+      setScheduleError(t('dashboard.loadPaymentAlertsError'))
+    } finally {
+      setScheduleLoading(false)
+      setLastUpdated(new Date())
+    }
+  }, [t])
 
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        setLoading(true)
-        const [membersRes, activeMembersRes, stationsRes, loans] = await Promise.all([
-          memberService.getMembers({ page: 1, size: 1 }),
-          memberService.getMembers({ page: 1, size: 1, status: 'Active' }),
-          policeStationService.getStations({ page: 1, size: 1 }),
-          loanService.getAllLoans(),
-        ])
-        setStats({
-          totalMembers: membersRes.total_count ?? membersRes.total ?? 0,
-          activeMembers: activeMembersRes.total_count ?? activeMembersRes.total ?? 0,
-          totalStations: stationsRes.total_count ?? stationsRes.total ?? 0,
-          sanctionedLoans: loans.reduce((total, loan) => total + Number(loan.sanction_amount ?? 0), 0),
-          totalRecoveries: loans.reduce((total, loan) => total + Number(loan.total_recovered ?? 0), 0),
-          pendingBalance: loans.reduce((total, loan) => total + Number(loan.outstanding_balance ?? 0), 0),
-        })
-      } catch {
-        setError(t('dashboard.loadDashboardError'))
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchStats()
-  }, [language])
-
-  useEffect(() => {
-    let active = true
-    const fetchScheduleAlerts = async () => {
-      try {
-        const month = currentMonth()
-        const [due, missing, waiting] = await Promise.all([
-          loanService.getMonthlySchedules({ month, schedule_status: 'Due', page: 1, size: 1 }),
-          loanService.getMonthlySchedules({ month, schedule_status: 'Missing', page: 1, size: 1 }),
-          loanService.getMonthlySchedules({ month, schedule_status: 'Waiting', page: 1, size: 1 }),
-        ])
-        if (active) {
-          setScheduleAlerts([
-            { key: 'due', label: t('dashboard.installmentsDue'), count: due.total ?? due.items?.length ?? 0 },
-            { key: 'missing', label: t('dashboard.missingInstallmentRecords'), count: missing.total ?? missing.items?.length ?? 0 },
-            { key: 'waiting', label: t('dashboard.waitingForEarlierInstallments'), count: waiting.total ?? waiting.items?.length ?? 0 },
-          ])
-        }
-      } catch {
-        if (active) setScheduleError(t('dashboard.loadPaymentAlertsError'))
-      } finally {
-        if (active) setScheduleLoading(false)
-      }
-    }
-    fetchScheduleAlerts()
-    return () => { active = false }
-  }, [language])
+    refreshDashboard()
+  }, [refreshDashboard])
 
   const sanctionedAmount = Number(stats.sanctionedLoans) || 0
   const recoveredAmount = Number(stats.totalRecoveries) || 0
@@ -154,6 +171,13 @@ export default function Dashboard() {
     ? Math.min(100, (recoveredAmount / sanctionedAmount) * 100)
     : 0
   const activeAlerts = scheduleAlerts.filter((alert) => alert.count > 0)
+  const totalAlertCount = scheduleAlerts.reduce((total, alert) => total + alert.count, 0)
+  const activeMemberRate = Number(stats.totalMembers) > 0
+    ? Math.round((Number(stats.activeMembers) / Number(stats.totalMembers)) * 100)
+    : 0
+  const updateLabel = lastUpdated
+    ? new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(lastUpdated)
+    : t('common.loading')
 
   const statCards = [
     {
@@ -221,14 +245,20 @@ export default function Dashboard() {
         subtitle={t('dashboard.subtitle')}
         eyebrow={t('dashboard.eyebrow')}
         actions={
-          <button
-            type="button"
-            onClick={() => navigate('/members/create')}
-            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded bg-gov-primary px-4 py-2 text-sm font-bold text-white transition hover:bg-gov-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gov-primary focus-visible:ring-offset-2 sm:w-auto"
-          >
-            <UserPlus className="h-4 w-4" aria-hidden="true" />
-            {t('dashboard.registerMember')}
-          </button>
+          <>
+            <button type="button" onClick={refreshDashboard} disabled={loading || scheduleLoading} className="inline-flex min-h-10 items-center justify-center gap-2 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-gov-navy transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gov-primary">
+              <RefreshCw className={`h-4 w-4 ${loading || scheduleLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+              <span className="hidden sm:inline">{t('common.refresh')}</span>
+            </button>
+            <button type="button" onClick={() => navigate('/reports')} className="inline-flex min-h-10 items-center justify-center gap-2 rounded border border-gov-primary/25 bg-blue-50 px-3 py-2 text-sm font-bold text-gov-primary transition hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gov-primary">
+              <BarChart3 className="h-4 w-4" aria-hidden="true" />
+              {t('dashboard.viewReports')}
+            </button>
+            <button type="button" onClick={() => navigate('/members/create')} className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded bg-gov-primary px-4 py-2 text-sm font-bold text-white transition hover:bg-gov-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gov-primary focus-visible:ring-offset-2 sm:w-auto">
+              <UserPlus className="h-4 w-4" aria-hidden="true" />
+              {t('dashboard.registerMember')}
+            </button>
+          </>
         }
       />
 
@@ -259,6 +289,10 @@ export default function Dashboard() {
           {statCards.map((card) => (
             <StatCard key={card.label} {...card} loading={loading} locale={locale} t={t} />
           ))}
+        </div>
+        <div className="flex flex-col gap-2 border-t border-slate-200 bg-white px-4 py-2.5 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-emerald-700" aria-hidden="true" />{t('dashboard.liveDataNotice')}</span>
+          <span className="font-medium tabular-nums">{t('dashboard.lastRefreshed')}: {updateLabel}</span>
         </div>
       </section>
 
@@ -361,21 +395,35 @@ export default function Dashboard() {
         </section>
       </div>
 
-      <section aria-labelledby="activity-heading" className="section-card overflow-hidden">
+      <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+      <section aria-labelledby="briefing-heading" className="section-card overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
           <div>
             <p className="text-[10px] font-bold uppercase text-gov-primary">{t('dashboard.auditOverview')}</p>
-            <h2 id="activity-heading" className="mt-0.5 text-base font-bold text-gov-navy">{t('dashboard.recentActivity')}</h2>
+            <h2 id="briefing-heading" className="mt-0.5 text-base font-bold text-gov-navy">{t('dashboard.operationalBriefing')}</h2>
           </div>
-          <Clock3 className="h-5 w-5 text-slate-400" aria-hidden="true" />
+          <ClipboardCheck className="h-5 w-5 text-slate-400" aria-hidden="true" />
         </div>
-        <div className="flex min-h-28 items-center gap-3 px-4 py-5 text-slate-500 sm:px-5">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500">
-            <FileText className="h-5 w-5" aria-hidden="true" />
-          </span>
-          <p className="text-sm leading-relaxed">{t('dashboard.recentActivityPlaceholder')}</p>
+        <ul className="divide-y divide-slate-100 px-4 py-4 sm:px-5">
+          <Insight icon={Users} tone="bg-blue-50 text-gov-primary" title={t('dashboard.memberCoverage', { rate: activeMemberRate })} description={t('dashboard.memberCoverageDetail', { active: new Intl.NumberFormat(locale).format(stats.activeMembers ?? 0), total: new Intl.NumberFormat(locale).format(stats.totalMembers ?? 0) })} action={t('dashboard.reviewMembers')} onAction={() => navigate('/members')} />
+          <Insight icon={totalAlertCount ? AlertCircle : CheckCircle2} tone={totalAlertCount ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-800'} title={totalAlertCount ? t('dashboard.scheduleAttention', { count: totalAlertCount }) : t('dashboard.scheduleClear')} description={totalAlertCount ? t('dashboard.scheduleAttentionDetail') : t('dashboard.scheduleClearDetail')} action={t('dashboard.reviewSchedules')} onAction={() => navigate('/schedules')} />
+          <Insight icon={Landmark} tone="bg-teal-50 text-teal-800" title={t('dashboard.recoverySnapshot', { rate: recoveryPercent.toFixed(1) })} description={t('dashboard.recoverySnapshotDetail')} action={t('dashboard.viewReports')} onAction={() => navigate('/reports')} />
+        </ul>
+      </section>
+
+      <section aria-labelledby="governance-heading" className="overflow-hidden rounded-md border border-slate-200 bg-gov-navy text-white shadow-sm">
+        <div className="border-b border-white/10 px-4 py-3 sm:px-5">
+          <p className="text-[10px] font-bold uppercase text-amber-300">{t('dashboard.governance')}</p>
+          <h2 id="governance-heading" className="mt-0.5 text-base font-bold">{t('dashboard.recordsAtAGlance')}</h2>
+        </div>
+        <div className="grid grid-cols-2 divide-x divide-y divide-white/10">
+          <div className="p-4"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-300">{t('dashboard.activeRate')}</p><p className="mt-1 text-2xl font-bold tabular-nums text-white">{activeMemberRate}%</p><p className="mt-1 text-xs text-slate-300">{t('dashboard.activePersonnel')}</p></div>
+          <div className="p-4"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-300">{t('dashboard.recoveryRate')}</p><p className="mt-1 text-2xl font-bold tabular-nums text-white">{recoveryPercent.toFixed(1)}%</p><p className="mt-1 text-xs text-slate-300">{t('dashboard.principalRecovered')}</p></div>
+          <div className="p-4"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-300">{t('dashboard.directoryCoverage')}</p><p className="mt-1 text-2xl font-bold tabular-nums text-white">{new Intl.NumberFormat(locale).format(stats.totalStations ?? 0)}</p><p className="mt-1 text-xs text-slate-300">{t('dashboard.registeredUnits')}</p></div>
+          <div className="p-4"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-300">{t('dashboard.itemsForReview')}</p><p className={`mt-1 text-2xl font-bold tabular-nums ${totalAlertCount ? 'text-amber-300' : 'text-emerald-300'}`}>{totalAlertCount}</p><p className="mt-1 text-xs text-slate-300">{t('dashboard.currentMonth')}</p></div>
         </div>
       </section>
+      </div>
     </div>
   )
 }
