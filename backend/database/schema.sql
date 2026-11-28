@@ -181,7 +181,64 @@ FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
 -- ------------------------------------------------------------------------------
--- 8. Documents Table
+-- 8. Membership History and Subscription Ledger
+-- ------------------------------------------------------------------------------
+-- Tier assignments and monthly subscription snapshots share this ledger table.
+CREATE TABLE IF NOT EXISTS membership_records (
+    record_id SERIAL PRIMARY KEY,
+    kgid VARCHAR(50) NOT NULL REFERENCES users(kgid) ON DELETE RESTRICT,
+    mf_id INTEGER NOT NULL REFERENCES membership_fees(mf_id) ON DELETE RESTRICT,
+    record_type VARCHAR(20) NOT NULL CHECK (record_type IN ('membership', 'subscription')),
+    effective_from DATE,
+    expires_at DATE,
+    amount NUMERIC(12, 2),
+    month INTEGER,
+    year INTEGER,
+    transaction_date DATE,
+    membership_record_id INTEGER REFERENCES membership_records(record_id) ON DELETE RESTRICT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_membership_records_record_fields CHECK (
+        (record_type = 'membership' AND effective_from IS NOT NULL
+            AND amount IS NULL AND month IS NULL AND year IS NULL
+            AND transaction_date IS NULL AND membership_record_id IS NULL)
+        OR
+        (record_type = 'subscription' AND effective_from IS NULL AND expires_at IS NULL
+            AND amount IS NOT NULL AND amount >= 0 AND month IS NOT NULL AND month BETWEEN 1 AND 12
+            AND year IS NOT NULL AND transaction_date IS NOT NULL AND membership_record_id IS NOT NULL)
+    ),
+    CONSTRAINT ck_membership_records_valid_period CHECK (
+        expires_at IS NULL OR effective_from IS NULL OR expires_at >= effective_from
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_membership_records_kgid ON membership_records(kgid);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_membership_records_active_assignment
+    ON membership_records(kgid)
+    WHERE record_type = 'membership' AND expires_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_membership_records_monthly_subscription
+    ON membership_records(kgid, year, month)
+    WHERE record_type = 'subscription';
+
+CREATE TRIGGER trg_membership_records_updated_at
+BEFORE UPDATE ON membership_records
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Backfill existing users with their current tier as the initial history entry.
+INSERT INTO membership_records (kgid, mf_id, record_type, effective_from)
+SELECT u.kgid, u.mf_id, 'membership', u.created_at::date
+FROM users u
+WHERE NOT EXISTS (
+    SELECT 1 FROM membership_records mr
+    WHERE mr.kgid = u.kgid
+      AND mr.record_type = 'membership'
+      AND mr.expires_at IS NULL
+)
+ON CONFLICT DO NOTHING;
+
+-- ------------------------------------------------------------------------------
+-- 9. Documents Table
 -- ------------------------------------------------------------------------------
 -- Uses doc_type_enum ('Membership', 'Loan Application')
 CREATE TABLE IF NOT EXISTS documents (
@@ -199,7 +256,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_kgid ON documents(kgid);
 CREATE INDEX IF NOT EXISTS idx_documents_doc_type ON documents(doc_type);
 
 -- ------------------------------------------------------------------------------
--- 9. Loans Table
+-- 10. Loans Table
 -- ------------------------------------------------------------------------------
 -- Uses loan_type_enum for the 5 official loan schemes
 CREATE TABLE IF NOT EXISTS loans (
@@ -232,7 +289,7 @@ FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
 -- ------------------------------------------------------------------------------
--- 10. Loan Payments Table
+-- 11. Loan Payments Table
 -- ------------------------------------------------------------------------------
 -- Installment recovery and balance tracking. Protected from accidental deletion.
 CREATE TABLE IF NOT EXISTS loan_payments (

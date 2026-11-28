@@ -1,10 +1,14 @@
 """Service layer for Police Personnel Members and Membership Fees."""
+from datetime import date
 from typing import Optional, Tuple, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, or_
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from app.models.user import User
 from app.models.police_station import PoliceStation
 from app.models.membership_fee import MembershipFee
+from app.models.membership_record import MembershipRecord
 from app.schemas.user import UserCreate, UserUpdate
 from app.schemas.membership_fee import MembershipFeeCreate, MembershipFeeStatusUpdate, MembershipFeeUpdate
 
@@ -15,6 +19,24 @@ def mask_bank_account(account_number: str) -> str:
     if len(clean) <= 4:
         return "****"
     return "*" * (len(clean) - 4) + clean[-4:]
+
+
+def _financial_period_for_date(value: date) -> Tuple[str, str]:
+    """Derive legacy financial period fields from a membership effective date."""
+    financial_year_start = value.year if value.month >= 4 else value.year - 1
+    financial_year = f"{financial_year_start}-{(financial_year_start + 1) % 100:02d}"
+    return financial_year, value.strftime("%B")
+
+
+def _add_membership_assignment(db: Session, kgid: str, mf_id: int, effective_from: date) -> MembershipRecord:
+    record = MembershipRecord(
+        kgid=kgid,
+        mf_id=mf_id,
+        record_type="membership",
+        effective_from=effective_from,
+    )
+    db.add(record)
+    return record
 
 
 def create_member(
@@ -50,6 +72,11 @@ def create_member(
     if not fee_tier.is_active:
         return None, f"Membership Fee Tier ID {payload.mf_id} is inactive."
 
+    membership_start_date = payload.membership_start_date or date.today()
+    if membership_start_date > date.today():
+        return None, "Membership start date cannot be in the future."
+    financial_year, financial_month = _financial_period_for_date(membership_start_date)
+
     # 5. Create new User record
     new_user = User(
         kgid=kgid_clean,
@@ -65,13 +92,18 @@ def create_member(
         caste=payload.caste.strip() if payload.caste else None,
         sub_caste=payload.sub_caste.strip() if payload.sub_caste else None,
         category=payload.category.strip() if payload.category else None,
-        financial_year=payload.financial_year.strip(),
-        financial_month=payload.financial_month.strip(),
+        financial_year=(payload.financial_year or financial_year).strip(),
+        financial_month=(payload.financial_month or financial_month).strip(),
         status="Active",
         mf_id=payload.mf_id,
     )
 
     db.add(new_user)
+    db.flush()
+    _add_membership_assignment(db, new_user.kgid, new_user.mf_id, membership_start_date)
+    db.flush()
+    current_date = date.today()
+    generate_monthly_subscriptions(db, current_date.year, current_date.month)
     db.commit()
     db.refresh(new_user)
     return new_user, ""
@@ -88,6 +120,10 @@ def update_member(
         return None, "Member not found."
 
     changes = payload.model_dump(exclude_unset=True, exclude_none=True)
+    membership_date_provided = "membership_start_date" in changes
+    membership_start_date = changes.pop("membership_start_date", None)
+    if membership_start_date and membership_start_date > date.today():
+        return None, "Membership start date cannot be in the future."
     share_number = changes.get("share_number")
     if share_number:
         share_number = share_number.strip()
@@ -105,15 +141,54 @@ def update_member(
         if not station or not station.is_active:
             return None, "Select an existing active police station."
 
-    if "mf_id" in changes and changes["mf_id"] != member.mf_id:
+    tier_changed = "mf_id" in changes and changes["mf_id"] != member.mf_id
+    membership_effective_date = membership_start_date or date.today()
+    new_membership_fee = None
+    if tier_changed:
         fee_tier = db.get(MembershipFee, changes["mf_id"])
         if not fee_tier or not fee_tier.is_active:
             return None, "Select an existing active membership fee tier."
+        new_membership_fee = fee_tier
+
+    active_assignment = None
+    if tier_changed or membership_date_provided:
+        active_assignment = db.execute(
+            select(MembershipRecord)
+            .where(
+                MembershipRecord.kgid == member.kgid,
+                MembershipRecord.record_type == "membership",
+                MembershipRecord.expires_at.is_(None),
+            )
+            .with_for_update()
+        ).scalar_one_or_none()
+        if tier_changed and active_assignment:
+            if membership_effective_date < active_assignment.effective_from:
+                return None, "Membership start date cannot precede the current tier's start date."
+            active_assignment.expires_at = membership_effective_date
+        elif tier_changed:
+            _add_membership_assignment(
+                db,
+                member.kgid,
+                member.mf_id,
+                member.created_at.date() if member.created_at else membership_effective_date,
+            ).expires_at = membership_effective_date
+        if tier_changed:
+            db.flush()
 
     for field, value in changes.items():
         if isinstance(value, str):
             value = value.strip()
         setattr(member, field, value)
+
+    if tier_changed and new_membership_fee:
+        _add_membership_assignment(db, member.kgid, new_membership_fee.mf_id, membership_effective_date)
+    elif membership_date_provided and active_assignment:
+        active_assignment.effective_from = membership_effective_date
+    elif membership_date_provided:
+        _add_membership_assignment(db, member.kgid, member.mf_id, membership_effective_date)
+
+    if membership_date_provided or tier_changed:
+        member.financial_year, member.financial_month = _financial_period_for_date(membership_effective_date)
 
     db.commit()
     db.refresh(member)
@@ -211,6 +286,13 @@ def get_member_by_kgid(db: Session, kgid: str) -> Optional[Dict[str, Any]]:
         return None
 
     user_obj, station_name = row
+    membership_start_date = db.execute(
+        select(MembershipRecord.effective_from).where(
+            MembershipRecord.kgid == user_obj.kgid,
+            MembershipRecord.record_type == "membership",
+            MembershipRecord.expires_at.is_(None),
+        )
+    ).scalar_one_or_none()
     return {
         "kgid": user_obj.kgid,
         "share_number": user_obj.share_number,
@@ -227,6 +309,7 @@ def get_member_by_kgid(db: Session, kgid: str) -> Optional[Dict[str, Any]]:
         "caste": user_obj.caste,
         "sub_caste": user_obj.sub_caste,
         "category": user_obj.category,
+        "membership_start_date": membership_start_date,
         "financial_year": user_obj.financial_year,
         "financial_month": user_obj.financial_month,
         "status": user_obj.status,
@@ -289,3 +372,62 @@ def update_membership_fee_tier_status(
     db.commit()
     db.refresh(fee)
     return fee
+
+
+def list_membership_records(db: Session, kgid: str) -> List[MembershipRecord]:
+    """Returns a member's tier history and monthly subscription snapshots."""
+    stmt = (
+        select(MembershipRecord)
+        .where(MembershipRecord.kgid == kgid.strip())
+        .order_by(MembershipRecord.created_at.asc(), MembershipRecord.record_id.asc())
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
+def generate_monthly_subscriptions(db: Session, year: int, month: int) -> int:
+    """Snapshot the assigned monthly subscription fee once per active member and period."""
+    transaction_date = date(year, month, 1)
+    eligible = db.execute(
+        select(
+            User.kgid,
+            User.mf_id,
+            MembershipFee.share_subscription_fee,
+            MembershipRecord.record_id,
+        )
+        .join(
+            MembershipRecord,
+            (MembershipRecord.kgid == User.kgid)
+            & (MembershipRecord.mf_id == User.mf_id)
+            & (MembershipRecord.record_type == "membership")
+            & MembershipRecord.expires_at.is_(None),
+        )
+        .join(MembershipFee, MembershipFee.mf_id == User.mf_id)
+        .where(User.status == "Active")
+    ).all()
+    if not eligible:
+        return 0
+
+    rows = [
+        {
+            "kgid": kgid,
+            "mf_id": mf_id,
+            "record_type": "subscription",
+            "amount": amount,
+            "month": month,
+            "year": year,
+            "transaction_date": transaction_date,
+            "membership_record_id": membership_record_id,
+        }
+        for kgid, mf_id, amount, membership_record_id in eligible
+    ]
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        statement = postgresql_insert(MembershipRecord).values(rows).on_conflict_do_nothing()
+    elif dialect == "sqlite":
+        statement = sqlite_insert(MembershipRecord).values(rows).on_conflict_do_nothing()
+    else:
+        raise RuntimeError(f"Monthly subscription generation is unsupported for database: {dialect}")
+
+    result = db.execute(statement)
+    db.commit()
+    return result.rowcount or 0

@@ -1,6 +1,7 @@
 """API endpoints for Police Personnel Membership operations."""
 from pathlib import Path
 import re
+from datetime import date
 from typing import Optional, List
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
@@ -28,6 +29,7 @@ from app.schemas.membership_fee import (
     MembershipFeeUpdate,
     MembershipFeeResponse,
 )
+from app.schemas.membership_record import MembershipRecordResponse
 from app.services import user_service
 
 router = APIRouter(prefix="/users", tags=["Members & Personnel"])
@@ -317,6 +319,38 @@ def update_fee_tier_status(
             detail="Membership fee tier not found.",
         )
     return fee
+
+
+@router.get(
+    "/{kgid}/membership-records",
+    response_model=List[MembershipRecordResponse],
+    summary="List Member Membership History",
+)
+def get_membership_records(
+    kgid: str,
+    admin: Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    if not db.get(User, kgid.strip()):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found.")
+    return user_service.list_membership_records(db, kgid)
+
+
+@router.post(
+    "/membership-records/generate",
+    summary="Generate Monthly Membership Subscriptions",
+)
+def generate_membership_subscriptions(
+    year: Optional[int] = Query(None, ge=1, le=9999),
+    month: Optional[int] = Query(None, ge=1, le=12),
+    admin: Admin = Depends(require_password_changed),
+    db: Session = Depends(get_db),
+):
+    current_date = date.today()
+    target_year = year or current_date.year
+    target_month = month or current_date.month
+    generated = user_service.generate_monthly_subscriptions(db, target_year, target_month)
+    return {"year": target_year, "month": target_month, "generated": generated}
 
 
 @router.get(

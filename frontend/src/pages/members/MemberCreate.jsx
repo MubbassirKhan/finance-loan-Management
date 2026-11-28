@@ -12,22 +12,6 @@ import { useToast } from '../../context/ToastContext.jsx'
 import memberService from '../../services/memberService.js'
 import policeStationService from '../../services/policeStationService.js'
 
-// Financial year options (2024-25 → 2030-31)
-const FINANCIAL_YEARS = ['2024-25', '2025-26', '2026-27', '2027-28', '2028-29', '2029-30', '2030-31']
-const MONTHS = [
-  { value: 'January', label: 'January' },
-  { value: 'February', label: 'February' },
-  { value: 'March', label: 'March' },
-  { value: 'April', label: 'April' },
-  { value: 'May', label: 'May' },
-  { value: 'June', label: 'June' },
-  { value: 'July', label: 'July' },
-  { value: 'August', label: 'August' },
-  { value: 'September', label: 'September' },
-  { value: 'October', label: 'October' },
-  { value: 'November', label: 'November' },
-  { value: 'December', label: 'December' },
-]
 const GENDERS    = [{ value: 'Male', label: 'Male' }, { value: 'Female', label: 'Female' }, { value: 'Other', label: 'Other' }]
 const CATEGORIES = [
   { value: 'GM',  label: 'GM – General Merit' },
@@ -41,6 +25,14 @@ const CATEGORIES = [
 
 // IFSC regex: 4 uppercase letters + 0 + 6 alphanumeric
 const IFSC_REGEX = /^[A-Z]{4}0[A-Z0-9]{6}$/
+
+function getLocalDateString() {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const day = String(today.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 export default function MemberCreate({ onClose: onCloseModal = null, onSaved = null, initialKgid = null }) {
   const { t } = useLanguage()
@@ -58,7 +50,10 @@ export default function MemberCreate({ onClose: onCloseModal = null, onSaved = n
 
   const {
     register, handleSubmit, formState: { errors }, setError, reset,
-  } = useForm({ mode: 'onBlur' })
+  } = useForm({
+    mode: 'onBlur',
+    defaultValues: { membership_start_date: getLocalDateString() },
+  })
 
   // Load form options and the member profile when editing.
   useEffect(() => {
@@ -271,18 +266,12 @@ export default function MemberCreate({ onClose: onCloseModal = null, onSaved = n
               {...register('mf_id', { required: t('validation.required') })}
             />
 
-            <Select
-              label={t('members.financialYear')}
-              options={FINANCIAL_YEARS.map(y => ({ value: y, label: y }))}
-              error={errors.financial_year?.message}
-              {...register('financial_year', { required: t('validation.required') })}
-            />
-
-            <Select
-              label={t('members.financialMonth')}
-              options={MONTHS}
-              error={errors.financial_month?.message}
-              {...register('financial_month', { required: t('validation.required') })}
+            <Input
+              label={t('members.membershipStartDate') + ' *'}
+              type="date"
+              max={getLocalDateString()}
+              error={errors.membership_start_date?.message}
+              {...register('membership_start_date', { required: t('validation.required') })}
             />
           </div>
         </div>

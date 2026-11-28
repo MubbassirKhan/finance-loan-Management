@@ -17,6 +17,20 @@ def init_db() -> None:
     # Add new cutoff-interest columns to existing installations.
     with engine.begin() as connection:
         connection.execute(text("""
+            INSERT INTO membership_records (kgid, mf_id, record_type, effective_from)
+            SELECT u.kgid, u.mf_id, 'membership', u.created_at::date
+            FROM users u
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM membership_records mr
+                WHERE mr.kgid = u.kgid
+                  AND mr.record_type = 'membership'
+                  AND mr.expires_at IS NULL
+            )
+            ON CONFLICT DO NOTHING
+        """))
+
+        connection.execute(text("""
             ALTER TABLE loans
             ADD COLUMN IF NOT EXISTS interest_rate NUMERIC(6, 4) NOT NULL DEFAULT 0
         """))

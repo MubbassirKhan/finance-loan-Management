@@ -71,6 +71,7 @@ from app.core.security import hash_password, verify_password, hash_session_token
 from app.models.admin import Admin
 from app.models.admin_session import AdminSession
 from app.models.membership_fee import MembershipFee
+from app.models.membership_record import MembershipRecord
 from app.models.police_station import PoliceStation
 from app.models.user import User
 
@@ -292,16 +293,82 @@ def run_all_tests():
         caste="General",
         sub_caste="Lingayat",
         category="3B",
-        financial_year="2025-2026",
-        financial_month="April",
+        membership_start_date=date(2026, 10, 15),
         mf_id=fee_tier.mf_id,
     )
     registered_member = users.register_member(member_payload, ready_admin, db)
     assert registered_member["kgid"] == "KGID-88390"
     assert registered_member["full_name"] == "Santosh Kumar"
     assert registered_member["bank_account_masked"] == "********1098"
+    current_period_subscription = db.query(MembershipRecord).filter_by(
+        kgid="KGID-88390",
+        record_type="subscription",
+        year=date.today().year,
+        month=date.today().month,
+    ).one()
+    assert current_period_subscription.amount == Decimal("500.00")
+    assert current_period_subscription.transaction_date == date.today().replace(day=1)
     print(f"  -> Member registered: KGID='{registered_member['kgid']}', Name='{registered_member['full_name']}'")
     print(f"  -> Bank account properly masked: {registered_member['bank_account_masked']}")
+
+    # 12b. Test membership tier history and monthly subscription snapshots
+    print("\n[TEST 12b] Testing membership history and monthly subscription generation...")
+    initial_assignment = db.query(MembershipRecord).filter_by(
+        kgid="KGID-88390", record_type="membership", expires_at=None
+    ).one()
+    assert initial_assignment.mf_id == fee_tier.mf_id
+    assert initial_assignment.effective_from == date(2026, 10, 15)
+    assert registered_member["financial_year"] == "2026-27"
+    assert registered_member["financial_month"] == "October"
+
+    assert user_service.generate_monthly_subscriptions(db, 2026, 1) == 1
+    assert user_service.generate_monthly_subscriptions(db, 2026, 1) == 0
+    january_subscription = db.query(MembershipRecord).filter_by(
+        kgid="KGID-88390", record_type="subscription", year=2026, month=1
+    ).one()
+    assert january_subscription.amount == Decimal("500.00")
+    assert january_subscription.transaction_date == date(2026, 1, 1)
+
+    fee_tier.share_subscription_fee = Decimal("650.00")
+    db.commit()
+    assert user_service.generate_monthly_subscriptions(db, 2026, 2) == 1
+    february_subscription = db.query(MembershipRecord).filter_by(
+        kgid="KGID-88390", record_type="subscription", year=2026, month=2
+    ).one()
+    assert january_subscription.amount == Decimal("500.00")
+    assert february_subscription.amount == Decimal("650.00")
+
+    replacement_tier = MembershipFee(
+        share_subscription_fee=Decimal("750.00"),
+        share_fee=Decimal("1200.00"),
+        membership_fee=Decimal("250.00"),
+        description="Replacement test tier",
+        is_active=True,
+    )
+    db.add(replacement_tier)
+    db.commit()
+    changed_member, error = user_service.update_member(
+        db,
+        "KGID-88390",
+        UserUpdate(mf_id=replacement_tier.mf_id),
+    )
+    assert changed_member is not None, error
+    db.refresh(initial_assignment)
+    assert initial_assignment.expires_at == date.today()
+    active_assignment = db.query(MembershipRecord).filter_by(
+        kgid="KGID-88390", record_type="membership", expires_at=None
+    ).one()
+    assert active_assignment.mf_id == replacement_tier.mf_id
+    assert user_service.generate_monthly_subscriptions(db, 2026, 3) == 1
+    march_subscription = db.query(MembershipRecord).filter_by(
+        kgid="KGID-88390", record_type="subscription", year=2026, month=3
+    ).one()
+    assert march_subscription.amount == Decimal("750.00")
+
+    user_service.set_member_status(db, "KGID-88390", "Inactive")
+    assert user_service.generate_monthly_subscriptions(db, 2026, 4) == 0
+    user_service.set_member_status(db, "KGID-88390", "Active")
+    print("  -> Tier history, idempotency, inactive exclusion, and fee snapshots verified.")
 
     # 13. Test Duplicate KGID Prevention
     print("\n[TEST 13] Testing Duplicate KGID Prevention...")

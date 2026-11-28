@@ -26,8 +26,9 @@ class UserBase(BaseModel):
     caste: Optional[str] = Field(None, max_length=50)
     sub_caste: Optional[str] = Field(None, max_length=50)
     category: Optional[str] = Field(None, max_length=50, description="Reservation Category (e.g., GM, 2A, 2B, 3A, 3B, SC, ST)")
-    financial_year: str = Field(..., min_length=4, max_length=20, examples=["2025-2026"])
-    financial_month: str = Field(..., min_length=3, max_length=20, examples=["April"])
+    membership_start_date: Optional[date] = Field(None, description="Date this membership tier takes effect")
+    financial_year: Optional[str] = Field(None, min_length=4, max_length=20, examples=["2025-2026"])
+    financial_month: Optional[str] = Field(None, min_length=3, max_length=20, examples=["April"])
     mf_id: int = Field(..., ge=1, description="Applicable Membership Fee Tier ID")
 
     @field_validator("ifsc_code")
@@ -66,6 +67,7 @@ class UserUpdate(BaseModel):
     caste: Optional[str] = Field(None, max_length=50)
     sub_caste: Optional[str] = Field(None, max_length=50)
     category: Optional[str] = Field(None, max_length=50)
+    membership_start_date: Optional[date] = None
     financial_year: Optional[str] = Field(None, max_length=20)
     financial_month: Optional[str] = Field(None, max_length=20)
     mf_id: Optional[int] = Field(None, ge=1)
@@ -102,6 +104,7 @@ class UserResponse(BaseModel):
     caste: Optional[str]
     sub_caste: Optional[str]
     category: Optional[str]
+    membership_start_date: Optional[date] = None
     financial_year: str
     financial_month: str
     status: str

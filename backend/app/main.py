@@ -1,16 +1,58 @@
 """FastAPI application initialization, middleware, routes, and exception handlers."""
+import asyncio
 import logging
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+from datetime import date
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import IntegrityError
 from app.core.config import settings
+from app.database.connection import SessionLocal
 from app.routes import auth, police_stations, users, loans, admin_management, reports
+from app.services.user_service import generate_monthly_subscriptions
 
 # Configure logger
 logger = logging.getLogger("uvicorn.error")
+
+
+def _generate_monthly_membership_records(year: int, month: int) -> int:
+    db = SessionLocal()
+    try:
+        return generate_monthly_subscriptions(db, year, month)
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+async def _membership_subscription_scheduler() -> None:
+    """Run once on startup for catch-up, then on each month's first day."""
+    last_processed_period = None
+    while True:
+        current_date = date.today()
+        period = (current_date.year, current_date.month)
+        if last_processed_period != period and (
+            last_processed_period is None or current_date.day == 1
+        ):
+            try:
+                generated = await asyncio.to_thread(
+                    _generate_monthly_membership_records,
+                    current_date.year,
+                    current_date.month,
+                )
+                logger.info(
+                    "Generated %s monthly membership subscription record(s) for %04d-%02d.",
+                    generated,
+                    current_date.year,
+                    current_date.month,
+                )
+                last_processed_period = period
+            except Exception:
+                logger.exception("Monthly membership subscription generation failed.")
+        await asyncio.sleep(60)
 
 
 @asynccontextmanager
@@ -21,7 +63,13 @@ async def lifespan(app: FastAPI):
     os.makedirs(upload_path, exist_ok=True)
     logger.info(f"Initialized uploads storage directory at: {upload_path}")
     logger.info(f"Started {settings.PROJECT_NAME} in [{settings.ENVIRONMENT}] mode.")
-    yield
+    scheduler_task = asyncio.create_task(_membership_subscription_scheduler())
+    try:
+        yield
+    finally:
+        scheduler_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await scheduler_task
     logger.info("Application shutdown completed.")
 
 

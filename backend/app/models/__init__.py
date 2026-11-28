@@ -5,6 +5,7 @@ from app.models.admin import Admin
 from app.models.admin_session import AdminSession
 from app.models.police_station import PoliceStation
 from app.models.membership_fee import MembershipFee
+from app.models.membership_record import MembershipRecord
 from app.models.user import User
 from app.models.document import Document
 from app.models.loan import Loan
@@ -19,6 +20,7 @@ __all__ = [
     "AdminSession",
     "PoliceStation",
     "MembershipFee",
+    "MembershipRecord",
     "User",
     "Document",
     "Loan",

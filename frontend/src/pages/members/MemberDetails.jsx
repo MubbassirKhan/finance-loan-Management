@@ -144,6 +144,7 @@ export default function MemberDetails({ memberKgid: propKgid = null, isModal = f
 
       <SectionCard icon={FileText} title={t('members.sectionMembership')}>
         <InfoRow label={t('members.feeTier')} value={member?.mf_id} />
+        <InfoRow label={t('members.membershipStartDate')} value={member?.membership_start_date} />
         <InfoRow label={t('members.financialYear')} value={member?.financial_year} />
         <InfoRow label={t('members.financialMonth')} value={member?.financial_month} />
         <InfoRow label="Created At" value={member?.created_at ? new Date(member.created_at).toLocaleDateString('en-IN') : '—'} />

@@ -247,6 +247,7 @@
     "subCaste": "Sub-Caste",
     "subCastePlaceholder": "Enter sub-caste if applicable",
     "category": "Reservation Category",
+    "membershipStartDate": "Membership Start Date",
     "financialYear": "Financial Year",
     "financialMonth": "Financial Month",
     "feeTier": "Membership Fee Tier",
