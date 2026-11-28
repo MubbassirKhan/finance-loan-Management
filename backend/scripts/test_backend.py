@@ -293,7 +293,7 @@ def run_all_tests():
         caste="General",
         sub_caste="Lingayat",
         category="3B",
-        membership_start_date=date(2026, 10, 15),
+        membership_start_date=date(2025, 1, 1),
         mf_id=fee_tier.mf_id,
     )
     registered_member = users.register_member(member_payload, ready_admin, db)
@@ -308,6 +308,10 @@ def run_all_tests():
     ).one()
     assert current_period_subscription.amount == Decimal("500.00")
     assert current_period_subscription.transaction_date == date.today().replace(day=1)
+    expected_subscription_count = (date.today().year - 2025) * 12 + date.today().month
+    assert db.query(MembershipRecord).filter_by(
+        kgid="KGID-88390", record_type="subscription"
+    ).count() == expected_subscription_count
     print(f"  -> Member registered: KGID='{registered_member['kgid']}', Name='{registered_member['full_name']}'")
     print(f"  -> Bank account properly masked: {registered_member['bank_account_masked']}")
 
@@ -317,26 +321,92 @@ def run_all_tests():
         kgid="KGID-88390", record_type="membership", expires_at=None
     ).one()
     assert initial_assignment.mf_id == fee_tier.mf_id
-    assert initial_assignment.effective_from == date(2026, 10, 15)
-    assert registered_member["financial_year"] == "2026-27"
-    assert registered_member["financial_month"] == "October"
+    assert initial_assignment.effective_from == date(2025, 1, 1)
+    assert registered_member["financial_year"] == "2024-25"
+    assert registered_member["financial_month"] == "January"
 
-    assert user_service.generate_monthly_subscriptions(db, 2026, 1) == 1
-    assert user_service.generate_monthly_subscriptions(db, 2026, 1) == 0
+    assert user_service.generate_monthly_subscriptions(db, 2026, 1, kgid="KGID-88390") == 0
     january_subscription = db.query(MembershipRecord).filter_by(
         kgid="KGID-88390", record_type="subscription", year=2026, month=1
     ).one()
     assert january_subscription.amount == Decimal("500.00")
     assert january_subscription.transaction_date == date(2026, 1, 1)
 
+    legacy_member = User(
+        kgid="KGID-LEGACY-1",
+        full_name="Legacy Member",
+        designation="Constable",
+        ps_id=ps_id,
+        bank_account_number="123456789012",
+        ifsc_code="SBIN0001234",
+        dob=date(1985, 5, 10),
+        gender="Male",
+        financial_year="2024-25",
+        financial_month="January",
+        status="Active",
+        mf_id=fee_tier.mf_id,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    db.add(legacy_member)
+    db.commit()
+    backfilled_count = user_service.generate_missing_membership_subscriptions(
+        db,
+        as_of=date(2025, 2, 1),
+        kgid=legacy_member.kgid,
+    )
+    assert backfilled_count == 2
+    legacy_assignment = db.query(MembershipRecord).filter_by(
+        kgid=legacy_member.kgid, record_type="membership"
+    ).one()
+    assert legacy_assignment.effective_from == date(2025, 1, 1)
+    assert db.query(MembershipRecord).filter_by(
+        kgid=legacy_member.kgid, record_type="subscription"
+    ).count() == 2
+
+    midmonth_member, error = user_service.create_member(
+        db,
+        UserCreate(
+            kgid="KGID-MIDMONTH-1",
+            full_name="Midmonth Member",
+            designation="Constable",
+            ps_id=ps_id,
+            bank_account_number="123456789013",
+            ifsc_code="SBIN0001234",
+            dob=date(1986, 6, 12),
+            gender="Male",
+            financial_year="2024-25",
+            financial_month="January",
+            membership_start_date=date(2025, 1, 15),
+            mf_id=fee_tier.mf_id,
+        ),
+    )
+    assert midmonth_member is not None, error
+    assert db.query(MembershipRecord).filter_by(
+        kgid=midmonth_member.kgid, record_type="subscription", year=2025, month=1
+    ).count() == 0
+    assert db.query(MembershipRecord).filter_by(
+        kgid=midmonth_member.kgid, record_type="subscription", year=2025, month=2
+    ).count() == 1
+
     fee_tier.share_subscription_fee = Decimal("650.00")
     db.commit()
-    assert user_service.generate_monthly_subscriptions(db, 2026, 2) == 1
+    assert user_service.generate_monthly_subscriptions(db, 2026, 2, kgid="KGID-88390") == 0
     february_subscription = db.query(MembershipRecord).filter_by(
         kgid="KGID-88390", record_type="subscription", year=2026, month=2
     ).one()
     assert january_subscription.amount == Decimal("500.00")
-    assert february_subscription.amount == Decimal("650.00")
+    assert february_subscription.amount == Decimal("500.00")
+
+    today = date.today()
+    next_month = date(today.year + (today.month // 12), today.month % 12 + 1, 1)
+    following_month = date(next_month.year + (next_month.month // 12), next_month.month % 12 + 1, 1)
+    assert user_service.generate_monthly_subscriptions(
+        db, next_month.year, next_month.month, kgid="KGID-88390"
+    ) == 1
+    next_month_subscription = db.query(MembershipRecord).filter_by(
+        kgid="KGID-88390", record_type="subscription", year=next_month.year, month=next_month.month
+    ).one()
+    assert next_month_subscription.amount == Decimal("650.00")
 
     replacement_tier = MembershipFee(
         share_subscription_fee=Decimal("750.00"),
@@ -359,14 +429,19 @@ def run_all_tests():
         kgid="KGID-88390", record_type="membership", expires_at=None
     ).one()
     assert active_assignment.mf_id == replacement_tier.mf_id
-    assert user_service.generate_monthly_subscriptions(db, 2026, 3) == 1
+    assert user_service.generate_monthly_subscriptions(
+        db, following_month.year, following_month.month, kgid="KGID-88390"
+    ) == 1
     march_subscription = db.query(MembershipRecord).filter_by(
-        kgid="KGID-88390", record_type="subscription", year=2026, month=3
+        kgid="KGID-88390", record_type="subscription", year=following_month.year, month=following_month.month
     ).one()
     assert march_subscription.amount == Decimal("750.00")
 
     user_service.set_member_status(db, "KGID-88390", "Inactive")
-    assert user_service.generate_monthly_subscriptions(db, 2026, 4) == 0
+    inactive_month = date(following_month.year + (following_month.month // 12), following_month.month % 12 + 1, 1)
+    assert user_service.generate_monthly_subscriptions(
+        db, inactive_month.year, inactive_month.month, kgid="KGID-88390"
+    ) == 0
     user_service.set_member_status(db, "KGID-88390", "Active")
     print("  -> Tier history, idempotency, inactive exclusion, and fee snapshots verified.")
 

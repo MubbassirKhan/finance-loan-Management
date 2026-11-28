@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, FileText, Save, Upload, X } from 'lucide-react'
-import PageHeader from '../../components/layout/PageHeader.jsx'
+import { FileText, Save, Upload, X } from 'lucide-react'
 import Button from '../../components/common/Button.jsx'
 import Input from '../../components/common/Input.jsx'
 import Select from '../../components/common/Select.jsx'
@@ -40,7 +39,6 @@ export default function MemberCreate({ onClose: onCloseModal = null, onSaved = n
   const navigate = useNavigate()
   const { kgid: routeKgid } = useParams()
   const memberKgid = initialKgid || (routeKgid ? decodeURIComponent(routeKgid) : null)
-  const isModal = Boolean(onCloseModal)
 
   const [stations, setStations]   = useState([])
   const [feeTiers, setFeeTiers]   = useState([])
@@ -142,7 +140,7 @@ export default function MemberCreate({ onClose: onCloseModal = null, onSaved = n
         </div>
       </div>
     )
-    return isModal ? (
+    return (
       <Modal
         isOpen
         onClose={onCloseModal}
@@ -151,7 +149,7 @@ export default function MemberCreate({ onClose: onCloseModal = null, onSaved = n
       >
         {loadingContent}
       </Modal>
-    ) : loadingContent
+    )
   }
 
   const formContent = (
@@ -359,7 +357,7 @@ export default function MemberCreate({ onClose: onCloseModal = null, onSaved = n
           <Button
             type="button"
             variant="outline"
-            onClick={() => (onCloseModal ? onCloseModal() : navigate('/members'))}
+            onClick={onCloseModal}
           >
             {t('common.cancel')}
           </Button>
@@ -375,32 +373,15 @@ export default function MemberCreate({ onClose: onCloseModal = null, onSaved = n
       </form>
   )
 
-  if (isModal) {
-    return (
-      <Modal
-        isOpen
-        onClose={onCloseModal}
-        title={memberKgid ? t('members.editTitle') : t('members.createTitle')}
-        subtitle={memberKgid ? `KGID: ${memberKgid}` : t('members.createSubtitle')}
-        maxWidth="max-w-5xl"
-      >
-        {formContent}
-      </Modal>
-    )
-  }
-
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-5 px-4 py-5 sm:space-y-6 sm:px-6 sm:py-6 lg:px-8">
-      <PageHeader
-        title={memberKgid ? t('members.editTitle') : t('members.createTitle')}
-        subtitle={memberKgid ? `KGID: ${memberKgid}` : t('members.createSubtitle')}
-        actions={
-          <Button variant="outline" icon={<ArrowLeft className="w-4 h-4" />} onClick={() => navigate('/members')}>
-            {t('common.back')}
-          </Button>
-        }
-      />
+    <Modal
+      isOpen
+      onClose={onCloseModal}
+      title={memberKgid ? t('members.editTitle') : t('members.createTitle')}
+      subtitle={memberKgid ? `KGID: ${memberKgid}` : t('members.createSubtitle')}
+      maxWidth="max-w-5xl"
+    >
       {formContent}
-    </div>
+    </Modal>
   )
 }

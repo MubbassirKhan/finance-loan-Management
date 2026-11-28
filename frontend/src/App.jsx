@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import ProtectedRoute from './routes/ProtectedRoute.jsx'
 import MainLayout from './components/layout/MainLayout.jsx'
 import Loading from './components/common/Loading.jsx'
@@ -16,7 +16,6 @@ const Settings             = lazy(() => import('./pages/Settings.jsx'))
 
 // Members
 const MemberList    = lazy(() => import('./pages/members/MemberList.jsx'))
-const MemberCreate  = lazy(() => import('./pages/members/MemberCreate.jsx'))
 const MemberDetails = lazy(() => import('./pages/members/MemberDetails.jsx'))
 
 // Police Stations
@@ -35,6 +34,11 @@ const Reports      = lazy(() => import('./pages/reports/Reports.jsx'))
 
 // Fallback while lazy chunks load
 const PageLoader = () => <Loading fullScreen message="Loading..." />
+
+function RedirectMemberEdit() {
+  const { kgid } = useParams()
+  return <Navigate to={`/members?edit=${encodeURIComponent(kgid)}`} replace />
+}
 
 function App() {
   return (
@@ -76,8 +80,8 @@ function App() {
 
           {/* Members */}
           <Route path="/members" element={<MemberList />} />
-          <Route path="/members/create" element={<MemberCreate />} />
-          <Route path="/members/:kgid/edit" element={<MemberCreate />} />
+          <Route path="/members/create" element={<Navigate to="/members?create=1" replace />} />
+          <Route path="/members/:kgid/edit" element={<RedirectMemberEdit />} />
           <Route path="/members/:kgid" element={<MemberDetails />} />
 
           {/* Police Stations */}

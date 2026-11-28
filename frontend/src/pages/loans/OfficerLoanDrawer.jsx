@@ -35,25 +35,6 @@ function formatSubscriptionPeriod(year, month) {
   })
 }
 
-const MONTH_INDEX = {
-  january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
-  july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
-}
-
-function getShareContributionMonths(member) {
-  const year = Number(String(member?.financial_year || '').match(/\d{4}/)?.[0])
-  const month = MONTH_INDEX[String(member?.financial_month || '').trim().toLowerCase()]
-  const fallback = member?.created_at ? new Date(member.created_at) : null
-  const start = Number.isFinite(year) && month !== undefined
-    ? new Date(year, month, 1)
-    : fallback
-
-  if (!start || Number.isNaN(start.getTime())) return null
-  const today = new Date()
-  const elapsedMonths = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth())
-  return elapsedMonths < 0 ? 0 : Math.max(1, elapsedMonths)
-}
-
 function getScheduleMonth(startMonth, installmentOffset) {
   const start = String(startMonth || '').trim()
   const nameMatch = start.match(/^([A-Za-z]+)\s+(\d{4})$/)
@@ -233,9 +214,7 @@ export default function OfficerLoanDrawer({
   if (!isOpen) return null
 
   const user = history?.user
-  const contributionMonths = getShareContributionMonths(user)
   const monthlySubscriptionAmount = Number(membershipFeeTier?.share_subscription_fee ?? 0)
-  const accumulatedShareAmount = contributionMonths === null ? null : monthlySubscriptionAmount * contributionMonths
   const loans = history?.loans || []
   const allPayments = history?.payments || []
   const membershipAssignments = membershipRecords.filter((record) => record.record_type === 'membership')
@@ -243,6 +222,10 @@ export default function OfficerLoanDrawer({
   const shareTransactions = membershipRecords
     .filter((record) => record.record_type === 'subscription')
     .sort((left, right) => (right.transaction_date || '').localeCompare(left.transaction_date || ''))
+  const contributionMonths = shareTransactions.length
+  const accumulatedShareAmount = shareTransactions.length
+    ? shareTransactions.reduce((total, record) => total + Number(record.amount || 0), 0)
+    : null
   const earliestMembership = [...membershipAssignments]
     .sort((left, right) => (left.effective_from || '').localeCompare(right.effective_from || ''))[0]
   const membershipStarted = earliestMembership?.effective_from || user?.membership_start_date
@@ -622,6 +605,18 @@ export default function OfficerLoanDrawer({
             </button>
 
             <button
+              onClick={() => setActiveTab('shares')}
+              className={`flex items-center gap-2 px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
+                activeTab === 'shares'
+                  ? 'border-gov-primary text-gov-primary bg-white'
+                  : 'border-transparent text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              {t('loans.tabShareTransactions')} ({shareTransactions.length})
+            </button>
+
+            <button
               onClick={() => setActiveTab('loans')}
               className={`flex items-center gap-2 px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
                 activeTab === 'loans'
@@ -749,62 +744,6 @@ export default function OfficerLoanDrawer({
                 </div>
 
                 <section className="overflow-hidden rounded-md border border-slate-200 bg-white">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <FileSpreadsheet className="h-4 w-4 text-gov-primary" />
-                      <div>
-                        <h4 className="text-xs font-bold uppercase tracking-wide text-gov-primary">
-                          {t('members.shareTransactionsTitle')}
-                        </h4>
-                        <p className="mt-0.5 text-xs text-slate-500">
-                          {t('members.shareTransactionsDescription')}
-                        </p>
-                      </div>
-                    </div>
-                    <span className="rounded-sm bg-white px-2 py-1 text-xs font-semibold text-slate-600">
-                      {shareTransactions.length}
-                    </span>
-                  </div>
-                  {shareTransactions.length === 0 ? (
-                    <p className="px-4 py-5 text-sm text-slate-500">{t('members.noShareTransactions')}</p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
-                        <thead className="bg-white text-[10px] uppercase tracking-wide text-slate-500">
-                          <tr>
-                            <th className="px-4 py-3 font-semibold">{t('members.transactionDate')}</th>
-                            <th className="px-4 py-3 font-semibold">{t('members.subscriptionPeriod')}</th>
-                            <th className="px-4 py-3 font-semibold">{t('members.feeTier')}</th>
-                            <th className="px-4 py-3 text-right font-semibold">{t('members.amount')}</th>
-                            <th className="px-4 py-3 font-semibold">{t('members.membershipStarted')}</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {shareTransactions.map((transaction) => {
-                            const assignment = assignmentById.get(transaction.membership_record_id)
-                            return (
-                              <tr key={transaction.record_id} className="text-slate-700">
-                                <td className="whitespace-nowrap px-4 py-3">{formatLedgerDate(transaction.transaction_date)}</td>
-                                <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-900">
-                                  {formatSubscriptionPeriod(transaction.year, transaction.month)}
-                                </td>
-                                <td className="px-4 py-3">Tier {transaction.mf_id}</td>
-                                <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-gov-primary">
-                                  {formatINR(transaction.amount)}
-                                </td>
-                                <td className="whitespace-nowrap px-4 py-3">
-                                  {formatLedgerDate(assignment?.effective_from)}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </section>
-
-                <section className="overflow-hidden rounded-md border border-slate-200 bg-white">
                   <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
                     <div className="flex items-center gap-2">
                       <FileText className="h-4 w-4 text-gov-primary" />
@@ -855,6 +794,63 @@ export default function OfficerLoanDrawer({
                         </li>
                       ))}
                     </ul>
+                  )}
+                </section>
+              </div>
+            ) : activeTab === 'shares' ? (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">{t('members.shareTransactionsTitle')}</h3>
+                  <p className="mt-1 text-sm text-slate-500">{t('members.shareTransactionsDescription')}</p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <LedgerMetric label={t('members.membershipStarted')} value={formatLedgerDate(membershipStarted)} />
+                  <LedgerMetric label={t('members.contributionMonths')} value={t('members.monthsCount', { count: contributionMonths })} />
+                  <LedgerMetric label={t('members.totalShareAmount')} value={accumulatedShareAmount === null ? '—' : formatINR(accumulatedShareAmount)} emphasis />
+                </div>
+
+                <section className="overflow-hidden rounded-md border border-slate-200 bg-white">
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <h4 className="text-xs font-bold uppercase tracking-wide text-gov-primary">{t('members.shareTransactionsTitle')}</h4>
+                    <span className="rounded-sm bg-white px-2 py-1 text-xs font-semibold text-slate-600">{shareTransactions.length}</span>
+                  </div>
+                  {shareTransactions.length === 0 ? (
+                    <p className="px-4 py-5 text-sm text-slate-500">{t('members.noShareTransactions')}</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
+                        <thead className="bg-white text-[10px] uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="px-4 py-3 font-semibold">{t('members.transactionDate')}</th>
+                            <th className="px-4 py-3 font-semibold">{t('members.subscriptionPeriod')}</th>
+                            <th className="px-4 py-3 font-semibold">{t('members.feeTier')}</th>
+                            <th className="px-4 py-3 text-right font-semibold">{t('members.amount')}</th>
+                            <th className="px-4 py-3 font-semibold">{t('members.membershipStarted')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {shareTransactions.map((transaction) => {
+                            const assignment = assignmentById.get(transaction.membership_record_id)
+                            return (
+                              <tr key={transaction.record_id} className="text-slate-700">
+                                <td className="whitespace-nowrap px-4 py-3">{formatLedgerDate(transaction.transaction_date)}</td>
+                                <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-900">
+                                  {formatSubscriptionPeriod(transaction.year, transaction.month)}
+                                </td>
+                                <td className="px-4 py-3">Tier {transaction.mf_id}</td>
+                                <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-gov-primary">
+                                  {formatINR(transaction.amount)}
+                                </td>
+                                <td className="whitespace-nowrap px-4 py-3">
+                                  {formatLedgerDate(assignment?.effective_from)}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </section>
               </div>

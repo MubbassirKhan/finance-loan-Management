@@ -259,7 +259,7 @@ export default function MemberDetails({ memberKgid: propKgid = null, isModal = f
         subtitle={`KGID: ${member?.kgid}`}
         actions={
           <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="outline" icon={<Pencil className="w-4 h-4" />} onClick={() => navigate(`/members/${encodeURIComponent(member.kgid)}/edit`)}>
+            <Button variant="outline" icon={<Pencil className="w-4 h-4" />} onClick={() => onEdit ? onEdit() : navigate(`/members?edit=${encodeURIComponent(member.kgid)}`)}>
               Edit Member
             </Button>
             <Button

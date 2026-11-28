@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.config import settings
 from app.database.connection import SessionLocal
 from app.routes import auth, police_stations, users, loans, admin_management, reports
-from app.services.user_service import generate_monthly_subscriptions
+from app.services.user_service import generate_missing_membership_subscriptions
 
 # Configure logger
 logger = logging.getLogger("uvicorn.error")
@@ -20,7 +20,7 @@ logger = logging.getLogger("uvicorn.error")
 def _generate_monthly_membership_records(year: int, month: int) -> int:
     db = SessionLocal()
     try:
-        return generate_monthly_subscriptions(db, year, month)
+        return generate_missing_membership_subscriptions(db, as_of=date(year, month, 1))
     except Exception:
         db.rollback()
         raise

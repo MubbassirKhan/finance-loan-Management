@@ -1,5 +1,5 @@
 """Service layer for Police Personnel Members and Membership Fees."""
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, Tuple, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, or_
@@ -26,6 +26,20 @@ def _financial_period_for_date(value: date) -> Tuple[str, str]:
     financial_year_start = value.year if value.month >= 4 else value.year - 1
     financial_year = f"{financial_year_start}-{(financial_year_start + 1) % 100:02d}"
     return financial_year, value.strftime("%B")
+
+
+def _legacy_membership_start_date(member: User) -> date:
+    """Recover a legacy member's start month from existing financial-period fields."""
+    try:
+        fiscal_start_year = int(member.financial_year.split("-")[0][:4])
+        try:
+            month_number = datetime.strptime(member.financial_month.strip(), "%B").month
+        except ValueError:
+            month_number = datetime.strptime(member.financial_month.strip(), "%b").month
+        calendar_year = fiscal_start_year + (1 if month_number < 4 else 0)
+        return date(calendar_year, month_number, 1)
+    except (AttributeError, TypeError, ValueError):
+        return member.created_at.date() if member.created_at else date.today()
 
 
 def _add_membership_assignment(db: Session, kgid: str, mf_id: int, effective_from: date) -> MembershipRecord:
@@ -103,7 +117,7 @@ def create_member(
     _add_membership_assignment(db, new_user.kgid, new_user.mf_id, membership_start_date)
     db.flush()
     current_date = date.today()
-    generate_monthly_subscriptions(db, current_date.year, current_date.month)
+    generate_missing_membership_subscriptions(db, as_of=current_date, kgid=new_user.kgid)
     db.commit()
     db.refresh(new_user)
     return new_user, ""
@@ -384,32 +398,46 @@ def list_membership_records(db: Session, kgid: str) -> List[MembershipRecord]:
     return list(db.execute(stmt).scalars().all())
 
 
-def generate_monthly_subscriptions(db: Session, year: int, month: int) -> int:
-    """Snapshot the assigned monthly subscription fee once per active member and period."""
+def generate_monthly_subscriptions(
+    db: Session,
+    year: int,
+    month: int,
+    kgid: Optional[str] = None,
+    commit: bool = True,
+) -> int:
+    """Snapshot the tier active during a month, once per active member and period."""
     transaction_date = date(year, month, 1)
-    eligible = db.execute(
+    stmt = (
         select(
             User.kgid,
-            User.mf_id,
+            MembershipRecord.mf_id,
             MembershipFee.share_subscription_fee,
             MembershipRecord.record_id,
         )
         .join(
             MembershipRecord,
             (MembershipRecord.kgid == User.kgid)
-            & (MembershipRecord.mf_id == User.mf_id)
             & (MembershipRecord.record_type == "membership")
-            & MembershipRecord.expires_at.is_(None),
+            & (MembershipRecord.effective_from <= transaction_date)
+            & or_(MembershipRecord.expires_at.is_(None), MembershipRecord.expires_at >= transaction_date),
         )
-        .join(MembershipFee, MembershipFee.mf_id == User.mf_id)
+        .join(MembershipFee, MembershipFee.mf_id == MembershipRecord.mf_id)
         .where(User.status == "Active")
-    ).all()
-    if not eligible:
+        .order_by(User.kgid.asc(), MembershipRecord.effective_from.desc(), MembershipRecord.record_id.desc())
+    )
+    if kgid:
+        stmt = stmt.where(User.kgid == kgid.strip())
+
+    assignment_rows = db.execute(stmt).all()
+    eligible_by_member = {}
+    for row in assignment_rows:
+        eligible_by_member.setdefault(row.kgid, row)
+    if not eligible_by_member:
         return 0
 
     rows = [
         {
-            "kgid": kgid,
+            "kgid": member_kgid,
             "mf_id": mf_id,
             "record_type": "subscription",
             "amount": amount,
@@ -418,7 +446,7 @@ def generate_monthly_subscriptions(db: Session, year: int, month: int) -> int:
             "transaction_date": transaction_date,
             "membership_record_id": membership_record_id,
         }
-        for kgid, mf_id, amount, membership_record_id in eligible
+        for member_kgid, mf_id, amount, membership_record_id in eligible_by_member.values()
     ]
     dialect = db.get_bind().dialect.name
     if dialect == "postgresql":
@@ -429,5 +457,68 @@ def generate_monthly_subscriptions(db: Session, year: int, month: int) -> int:
         raise RuntimeError(f"Monthly subscription generation is unsupported for database: {dialect}")
 
     result = db.execute(statement)
-    db.commit()
+    if commit:
+        db.commit()
     return result.rowcount or 0
+
+
+def generate_missing_membership_subscriptions(
+    db: Session,
+    as_of: Optional[date] = None,
+    kgid: Optional[str] = None,
+) -> int:
+    """Fill missing monthly ledger entries from each active member's first tier date."""
+    cutoff_date = as_of or date.today()
+    final_month = date(cutoff_date.year, cutoff_date.month, 1)
+    existing_assignments = select(MembershipRecord.kgid).where(
+        MembershipRecord.record_type == "membership"
+    )
+    members_without_history = db.execute(
+        select(User).where(~User.kgid.in_(existing_assignments))
+    ).scalars().all()
+    for member in members_without_history:
+        db.add(
+            MembershipRecord(
+                kgid=member.kgid,
+                mf_id=member.mf_id,
+                record_type="membership",
+                effective_from=_legacy_membership_start_date(member),
+            )
+        )
+    if members_without_history:
+        db.flush()
+
+    starts_stmt = (
+        select(User.kgid, func.min(MembershipRecord.effective_from))
+        .join(MembershipRecord, MembershipRecord.kgid == User.kgid)
+        .where(
+            User.status == "Active",
+            MembershipRecord.record_type == "membership",
+            MembershipRecord.effective_from <= cutoff_date,
+        )
+        .group_by(User.kgid)
+    )
+    if kgid:
+        starts_stmt = starts_stmt.where(User.kgid == kgid.strip())
+
+    total_generated = 0
+    member_starts = db.execute(starts_stmt).all()
+    for member_kgid, first_start in member_starts:
+        target_month = date(first_start.year, first_start.month, 1)
+        while target_month <= final_month:
+            total_generated += generate_monthly_subscriptions(
+                db,
+                target_month.year,
+                target_month.month,
+                kgid=member_kgid,
+                commit=False,
+            )
+            target_month = date(
+                target_month.year + (target_month.month // 12),
+                target_month.month % 12 + 1,
+                1,
+            )
+
+    if members_without_history or member_starts:
+        db.commit()
+    return total_generated

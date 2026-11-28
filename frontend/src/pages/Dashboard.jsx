@@ -231,7 +231,7 @@ export default function Dashboard() {
   ]
 
   const quickActions = [
-    { icon: UserPlus, label: t('dashboard.registerMember'), to: '/members/create', tone: 'bg-blue-50 text-gov-primary' },
+    { icon: UserPlus, label: t('dashboard.registerMember'), to: '/members?create=1', tone: 'bg-blue-50 text-gov-primary' },
     { icon: PlusCircle, label: t('dashboard.addStation'), to: '/police-stations/create', tone: 'bg-sky-50 text-sky-800' },
     { icon: Eye, label: t('dashboard.viewMembers'), to: '/members', tone: 'bg-emerald-50 text-emerald-800' },
     { icon: Building2, label: t('dashboard.viewStations'), to: '/police-stations', tone: 'bg-amber-50 text-amber-800' },
@@ -254,7 +254,7 @@ export default function Dashboard() {
               <BarChart3 className="h-4 w-4" aria-hidden="true" />
               {t('dashboard.viewReports')}
             </button>
-            <button type="button" onClick={() => navigate('/members/create')} className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded bg-gov-primary px-4 py-2 text-sm font-bold text-white transition hover:bg-gov-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gov-primary focus-visible:ring-offset-2 sm:w-auto">
+            <button type="button" onClick={() => navigate('/members?create=1')} className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded bg-gov-primary px-4 py-2 text-sm font-bold text-white transition hover:bg-gov-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gov-primary focus-visible:ring-offset-2 sm:w-auto">
               <UserPlus className="h-4 w-4" aria-hidden="true" />
               {t('dashboard.registerMember')}
             </button>

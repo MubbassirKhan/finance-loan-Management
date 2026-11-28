@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { UserPlus, Eye, Search, X, Pencil, UserCheck, UserX, Columns3, FileSpreadsheet, FileText } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader.jsx'
 import DataTable from '../../components/common/DataTable.jsx'
@@ -29,6 +30,7 @@ function downloadBlob(blob, filename) {
 export default function MemberList() {
   const { t } = useLanguage()
   const { error: toastError } = useToast()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   // Data
   const [members, setMembers]   = useState([])
@@ -51,6 +53,18 @@ export default function MemberList() {
   const [memberDrawerKgid, setMemberDrawerKgid] = useState(null)
   const columnsMenuRef = useRef(null)
   const columnsTriggerRef = useRef(null)
+
+  useEffect(() => {
+    const createRequested = searchParams.get('create') === '1'
+    const editKgid = searchParams.get('edit')
+    if (createRequested) {
+      setMemberDialog({ mode: 'create' })
+      setSearchParams({}, { replace: true })
+    } else if (editKgid) {
+      setMemberDialog({ mode: 'edit', kgid: editKgid })
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   // Debounce search input 400ms
   useEffect(() => {
