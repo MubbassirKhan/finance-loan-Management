@@ -341,7 +341,7 @@
     "monthlyPrincipal": "ಮಾಸಿಕ ಮೂಲ (₹)",
     "monthlyInterest": "ಮಾಸಿಕ ಬಡ್ಡಿ (₹)",
     "monthlyInterestRate": "ಮಾಸಿಕ ಬಡ್ಡಿ ದರ (%)",
-    "calculatedInterest": "ಲೆಕ್ಕಾಚಾರದ ಮಾಸಿಕ ಬಡ್ಡಿ",
+    "averageMonthlyInterest": "ಸರಾಸರಿ ಮಾಸಿಕ ಬಡ್ಡಿ",
     "recoveredAmount": "ವಸೂಲಾದ ಮೊತ್ತ (₹)",
     "outstandingBalance": "ಬಾಕಿ ಮೊತ್ತ (₹)",
     "totalInterestPaid": "ಪಾವತಿಸಿದ ಬಡ್ಡಿ (₹)",

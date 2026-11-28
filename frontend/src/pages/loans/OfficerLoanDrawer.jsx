@@ -476,7 +476,7 @@ export default function OfficerLoanDrawer({
         head: [['Schedule Summary', 'Amount']],
         body: [
           ['Total Principal Recovered', formatINRForPdf(totals.recovery)],
-          ['Total Cutoff Interest', formatINRForPdf(totals.interest)],
+          ['Total Cutoff Interest', formatINRForPdf(totals.plannedInterest)],
           ['Monthly Average Interest', formatINRForPdf(totals.averageInterest)],
           ['Total Recovered with Interest', formatINRForPdf(totals.withInterest)],
         ],
@@ -1096,8 +1096,8 @@ export default function OfficerLoanDrawer({
                       </span>
                       <span className="font-bold text-slate-900 text-sm">
                         {Number(activeLoan.sanction_amount) > 0
-                          ? `${((Number(activeLoan.monthly_interest) / Number(activeLoan.sanction_amount)) * 1200).toFixed(4).replace(/\.?0+$/, '')}% (${formatINR(activeLoan.monthly_interest)})`
-                          : formatINR(activeLoan.monthly_interest)}
+                          ? `${getAnnualRatePercent().toFixed(4).replace(/\.?0+$/, '')}% (${formatINR(getHistoryTotals().averageInterest)})`
+                          : formatINR(getHistoryTotals().averageInterest)}
                       </span>
                     </div>
 
@@ -1231,7 +1231,7 @@ export default function OfficerLoanDrawer({
                         </div>
                         <div>
                           <p className="text-[10px] font-bold uppercase text-slate-500">Total cutoff interest</p>
-                          <p className="mt-1 font-bold text-slate-900">{formatINR(totals.interest)}</p>
+                          <p className="mt-1 font-bold text-slate-900">{formatINR(totals.plannedInterest)}</p>
                         </div>
                         <div>
                           <p className="text-[10px] font-bold uppercase text-slate-500">Monthly average interest</p>

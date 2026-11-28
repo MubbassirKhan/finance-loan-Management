@@ -369,7 +369,7 @@
     "monthlyPrincipal": "Monthly Principal (₹)",
     "monthlyInterest": "Monthly Interest (₹)",
     "monthlyInterestRate": "Monthly Interest Rate (%)",
-    "calculatedInterest": "Calculated Monthly Interest",
+    "averageMonthlyInterest": "Average Monthly Interest",
     "recoveredAmount": "Recovered (₹)",
     "outstandingBalance": "Outstanding (₹)",
     "totalInterestPaid": "Interest Paid (₹)",

@@ -248,11 +248,15 @@ export default function LoanList() {
     }
   }, [watchedSanctionAmount, watchedMonthlyPrincipal, watchedStartMonth, calculatedInstallments])
 
-  const calculatedMonthlyInterest = Number(
-    (((isNaN(watchedSanctionAmount) ? 0 : watchedSanctionAmount) *
-      (isNaN(watchedInterestRate) ? 0 : watchedInterestRate)) /
-      1200).toFixed(2)
-  )
+  const averageMonthlyInterest = calculatedInstallments > 0
+    ? Number((Array.from({ length: calculatedInstallments }, (_, installmentIndex) => {
+      const openingBalance = Math.max(
+        0,
+        (watchedSanctionAmount || 0) - (watchedMonthlyPrincipal || 0) * installmentIndex,
+      )
+      return Number(((openingBalance * (watchedInterestRate || 0)) / 1200).toFixed(2))
+    }).reduce((total, monthlyInterest) => total + monthlyInterest, 0) / calculatedInstallments).toFixed(2))
+    : 0
 
   // Submit Create or Edit Loan
   const handleLoanSubmit = async (data) => {
@@ -852,7 +856,7 @@ export default function LoanList() {
               max="100"
               required
               placeholder="e.g. 0.7083"
-              helperText={`${t('loans.calculatedInterest')}: ${formatINR(calculatedMonthlyInterest)}`}
+              helperText={`${t('loans.averageMonthlyInterest')}: ${formatINR(averageMonthlyInterest)}`}
               error={loanForm.formState.errors.interest_rate?.message}
               {...loanForm.register('interest_rate', {
                 required: t('validation.required'),
