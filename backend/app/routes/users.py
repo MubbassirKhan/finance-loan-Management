@@ -2,7 +2,7 @@
 from pathlib import Path
 import re
 from datetime import date
-from typing import Optional, List
+from typing import Optional, List, Literal
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import func
@@ -93,6 +93,39 @@ def list_members(
         page=clean_page,
         size=clean_size,
     )
+
+
+@router.get(
+    "/kgid-availability",
+    summary="Check KGID Availability",
+)
+def check_kgid_availability(
+    kgid: str = Query(..., min_length=1, max_length=50),
+    admin: Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    return {"available": user_service.is_kgid_available(db, kgid)}
+
+
+@router.get(
+    "/field-availability",
+    summary="Check Member Identifier Availability",
+)
+def check_member_field_availability(
+    field: Literal["share_number", "buckle_number"] = Query(...),
+    value: str = Query(..., min_length=1, max_length=50),
+    exclude_kgid: Optional[str] = Query(None, max_length=50),
+    admin: Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    return {
+        "available": user_service.is_member_field_available(
+            db,
+            field,
+            value,
+            exclude_kgid=exclude_kgid,
+        )
+    }
 
 
 @router.get(

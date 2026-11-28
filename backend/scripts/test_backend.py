@@ -300,6 +300,24 @@ def run_all_tests():
     assert registered_member["kgid"] == "KGID-88390"
     assert registered_member["full_name"] == "Santosh Kumar"
     assert registered_member["bank_account_masked"] == "********1098"
+    assert users.check_kgid_availability("KGID-88390", ready_admin, db) == {"available": False}
+    assert users.check_kgid_availability("KGID-AVAILABLE", ready_admin, db) == {"available": True}
+    assert users.check_member_field_availability("share_number", "SHR-1002", None, ready_admin, db) == {"available": False}
+    assert users.check_member_field_availability("share_number", "SHR-AVAILABLE", None, ready_admin, db) == {"available": True}
+    assert users.check_member_field_availability("buckle_number", "HC-512", None, ready_admin, db) == {"available": False}
+    assert users.check_member_field_availability("buckle_number", "HC-AVAILABLE", None, ready_admin, db) == {"available": True}
+    duplicate_share_member, duplicate_share_error = user_service.create_member(
+        db,
+        member_payload.model_copy(update={"kgid": "KGID-DUP-SHARE", "buckle_number": "HC-513"}),
+    )
+    assert duplicate_share_member is None
+    assert "Share Number" in duplicate_share_error
+    duplicate_buckle_member, duplicate_buckle_error = user_service.create_member(
+        db,
+        member_payload.model_copy(update={"kgid": "KGID-DUP-BUCKLE", "share_number": None}),
+    )
+    assert duplicate_buckle_member is None
+    assert "Buckle Number" in duplicate_buckle_error
     current_period_subscription = db.query(MembershipRecord).filter_by(
         kgid="KGID-88390",
         record_type="subscription",

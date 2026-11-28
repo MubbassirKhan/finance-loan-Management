@@ -44,14 +44,20 @@ export default function MemberCreate({ onClose: onCloseModal = null, onSaved = n
   const [feeTiers, setFeeTiers]   = useState([])
   const [loading, setLoading]     = useState(false)
   const [loadingData, setLoadingData] = useState(true)
+  const [checkingKgid, setCheckingKgid] = useState(false)
+  const [checkingIdentifiers, setCheckingIdentifiers] = useState({ share_number: false, buckle_number: false })
+  const [originalIdentifiers, setOriginalIdentifiers] = useState(null)
   const [selectedFiles, setSelectedFiles] = useState([])
 
   const {
-    register, handleSubmit, formState: { errors }, setError, reset,
+    register, handleSubmit, formState: { errors }, setError, clearErrors, getFieldState, watch, reset,
   } = useForm({
     mode: 'onBlur',
     defaultValues: { membership_start_date: getLocalDateString() },
   })
+  const kgidValue = watch('kgid')
+  const shareNumberValue = watch('share_number')
+  const buckleNumberValue = watch('buckle_number')
 
   // Load form options and the member profile when editing.
   useEffect(() => {
@@ -75,6 +81,10 @@ export default function MemberCreate({ onClose: onCloseModal = null, onSaved = n
           label: `Tier ${f.mf_id} — ₹${Number(f.membership_fee).toLocaleString('en-IN')}`,
         })))
         if (member) {
+          setOriginalIdentifiers({
+            share_number: member.share_number || '',
+            buckle_number: member.buckle_number || '',
+          })
           reset({
             ...member,
             ps_id: String(member.ps_id),
@@ -90,6 +100,109 @@ export default function MemberCreate({ onClose: onCloseModal = null, onSaved = n
     loadFormData()
     return () => { cancelled = true }
   }, [memberKgid, reset])
+
+  useEffect(() => {
+    if (memberKgid) return undefined
+
+    const cleanKgid = String(kgidValue || '').trim()
+    if (cleanKgid.length < 3) {
+      if (['duplicate', 'validate'].includes(getFieldState('kgid').error?.type)) clearErrors('kgid')
+      setCheckingKgid(false)
+      return undefined
+    }
+
+    if (['duplicate', 'validate'].includes(getFieldState('kgid').error?.type)) clearErrors('kgid')
+    let cancelled = false
+    const timeoutId = window.setTimeout(async () => {
+      setCheckingKgid(true)
+      try {
+        const result = await memberService.checkKgidAvailability(cleanKgid)
+        if (!cancelled && !result.available) {
+          setError('kgid', {
+            type: 'duplicate',
+            message: t('members.kgidAlreadyRegistered'),
+          })
+        }
+      } catch {
+        // Keep typing responsive; submission remains the authoritative check.
+      } finally {
+        if (!cancelled) setCheckingKgid(false)
+      }
+    }, 350)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+    }
+  }, [kgidValue, memberKgid, clearErrors, getFieldState, setError, t])
+
+  useEffect(() => {
+    if (loadingData) return undefined
+
+    const field = 'share_number'
+    const cleanValue = String(shareNumberValue || '').trim()
+    const unchanged = memberKgid && cleanValue === (originalIdentifiers?.share_number || '')
+    if (!cleanValue || unchanged) {
+      if (['duplicate', 'validate'].includes(getFieldState(field).error?.type)) clearErrors(field)
+      setCheckingIdentifiers((current) => ({ ...current, [field]: false }))
+      return undefined
+    }
+
+    if (['duplicate', 'validate'].includes(getFieldState(field).error?.type)) clearErrors(field)
+    let cancelled = false
+    const timeoutId = window.setTimeout(async () => {
+      setCheckingIdentifiers((current) => ({ ...current, [field]: true }))
+      try {
+        const result = await memberService.checkMemberFieldAvailability(field, cleanValue, memberKgid)
+        if (!cancelled && !result.available) {
+          setError(field, { type: 'duplicate', message: t('members.shareNumberAlreadyAssigned') })
+        }
+      } catch {
+        // Keep typing responsive; submission remains the authoritative check.
+      } finally {
+        if (!cancelled) setCheckingIdentifiers((current) => ({ ...current, [field]: false }))
+      }
+    }, 350)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+    }
+  }, [shareNumberValue, loadingData, memberKgid, originalIdentifiers?.share_number, clearErrors, getFieldState, setError, t])
+
+  useEffect(() => {
+    if (loadingData) return undefined
+
+    const field = 'buckle_number'
+    const cleanValue = String(buckleNumberValue || '').trim()
+    const unchanged = memberKgid && cleanValue === (originalIdentifiers?.buckle_number || '')
+    if (!cleanValue || unchanged) {
+      if (['duplicate', 'validate'].includes(getFieldState(field).error?.type)) clearErrors(field)
+      setCheckingIdentifiers((current) => ({ ...current, [field]: false }))
+      return undefined
+    }
+
+    if (['duplicate', 'validate'].includes(getFieldState(field).error?.type)) clearErrors(field)
+    let cancelled = false
+    const timeoutId = window.setTimeout(async () => {
+      setCheckingIdentifiers((current) => ({ ...current, [field]: true }))
+      try {
+        const result = await memberService.checkMemberFieldAvailability(field, cleanValue, memberKgid)
+        if (!cancelled && !result.available) {
+          setError(field, { type: 'duplicate', message: t('members.buckleNumberAlreadyAssigned') })
+        }
+      } catch {
+        // Keep typing responsive; submission remains the authoritative check.
+      } finally {
+        if (!cancelled) setCheckingIdentifiers((current) => ({ ...current, [field]: false }))
+      }
+    }, 350)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+    }
+  }, [buckleNumberValue, loadingData, memberKgid, originalIdentifiers?.buckle_number, clearErrors, getFieldState, setError, t])
 
   const onSubmit = async (data) => {
     setLoading(true)
@@ -122,6 +235,18 @@ export default function MemberCreate({ onClose: onCloseModal = null, onSaved = n
         Object.entries(err.fieldErrors).forEach(([field, msg]) => {
           setError(field, { type: 'server', message: msg })
         })
+      } else if (/member with kgid .* already registered/i.test(err.message || '')) {
+        setError('kgid', {
+          type: 'duplicate',
+          message: err.message,
+        }, { shouldFocus: true })
+        toastError(err.message)
+      } else if (/^share number .* already assigned/i.test(err.message || '')) {
+        setError('share_number', { type: 'duplicate', message: err.message }, { shouldFocus: true })
+        toastError(err.message)
+      } else if (/^buckle number .* already assigned/i.test(err.message || '')) {
+        setError('buckle_number', { type: 'duplicate', message: err.message }, { shouldFocus: true })
+        toastError(err.message)
       } else {
         toastError(err.message || t('common.errorSave'))
       }
@@ -164,10 +289,20 @@ export default function MemberCreate({ onClose: onCloseModal = null, onSaved = n
               label={t('members.kgid') + ' *'}
               placeholder="e.g. KGD123456"
               error={errors.kgid?.message}
+              helperText={checkingKgid ? t('members.checkingKgid') : undefined}
               readOnly={Boolean(memberKgid)}
               {...register('kgid', {
                 required: t('validation.required'),
                 minLength: { value: 3, message: t('validation.minLength', { n: 3 }) },
+                validate: async (value) => {
+                  if (memberKgid || String(value || '').trim().length < 3) return true
+                  try {
+                    const result = await memberService.checkKgidAvailability(String(value).trim())
+                    return result.available || t('members.kgidAlreadyRegistered')
+                  } catch {
+                    return true
+                  }
+                },
               })}
             />
 
@@ -224,14 +359,38 @@ export default function MemberCreate({ onClose: onCloseModal = null, onSaved = n
               label={t('members.shareNo')}
               placeholder="e.g. SH-0001"
               error={errors.share_number?.message}
-              {...register('share_number')}
+              helperText={checkingIdentifiers.share_number ? t('members.checkingIdentifier') : undefined}
+              {...register('share_number', {
+                validate: async (value) => {
+                  const cleanValue = String(value || '').trim()
+                  if (!cleanValue || (memberKgid && cleanValue === (originalIdentifiers?.share_number || ''))) return true
+                  try {
+                    const result = await memberService.checkMemberFieldAvailability('share_number', cleanValue, memberKgid)
+                    return result.available || t('members.shareNumberAlreadyAssigned')
+                  } catch {
+                    return true
+                  }
+                },
+              })}
             />
 
             <Input
               label={t('members.buckleNo')}
               placeholder="e.g. BK-0001"
               error={errors.buckle_number?.message}
-              {...register('buckle_number')}
+              helperText={checkingIdentifiers.buckle_number ? t('members.checkingIdentifier') : undefined}
+              {...register('buckle_number', {
+                validate: async (value) => {
+                  const cleanValue = String(value || '').trim()
+                  if (!cleanValue || (memberKgid && cleanValue === (originalIdentifiers?.buckle_number || ''))) return true
+                  try {
+                    const result = await memberService.checkMemberFieldAvailability('buckle_number', cleanValue, memberKgid)
+                    return result.available || t('members.buckleNumberAlreadyAssigned')
+                  } catch {
+                    return true
+                  }
+                },
+              })}
             />
 
             <Input

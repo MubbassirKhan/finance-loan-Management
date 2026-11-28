@@ -29,7 +29,7 @@ export const ToastProvider = ({ children }) => {
     <ToastContext.Provider value={{ addToast, removeToast, success, error, info }}>
       {children}
       {/* Toast container floating at top right */}
-      <div className="fixed top-4 right-4 z-50 flex flex-col space-y-2 max-w-md w-full pointer-events-none px-4">
+      <div className="fixed top-4 right-4 z-[90] flex flex-col space-y-2 max-w-md w-full pointer-events-none px-4">
         {toasts.map((toast) => {
           const isSuccess = toast.type === 'success';
           const isError = toast.type === 'error';

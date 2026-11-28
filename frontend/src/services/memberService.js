@@ -33,6 +33,18 @@ export const memberService = {
     return response.data;
   },
 
+  checkKgidAvailability: async (kgid) => {
+    const response = await api.get('/api/v1/users/kgid-availability', { params: { kgid } });
+    return response.data;
+  },
+
+  checkMemberFieldAvailability: async (field, value, excludeKgid = '') => {
+    const response = await api.get('/api/v1/users/field-availability', {
+      params: { field, value, exclude_kgid: excludeKgid || undefined },
+    });
+    return response.data;
+  },
+
   // GET /api/v1/users/{kgid}/membership-records
   getMembershipRecords: async (kgid) => {
     const response = await api.get(`/api/v1/users/${encodeURIComponent(kgid)}/membership-records`);

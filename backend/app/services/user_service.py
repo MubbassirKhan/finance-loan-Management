@@ -21,6 +21,31 @@ def mask_bank_account(account_number: str) -> str:
     return "*" * (len(clean) - 4) + clean[-4:]
 
 
+def is_kgid_available(db: Session, kgid: str) -> bool:
+    """Check KGID uniqueness without exposing a member profile."""
+    return db.get(User, kgid.strip()) is None
+
+
+def is_member_field_available(
+    db: Session,
+    field_name: str,
+    value: str,
+    exclude_kgid: Optional[str] = None,
+) -> bool:
+    """Check share or buckle identifiers without returning member details."""
+    field = {
+        "share_number": User.share_number,
+        "buckle_number": User.buckle_number,
+    }.get(field_name)
+    if field is None:
+        raise ValueError(f"Unsupported unique member field: {field_name}")
+
+    stmt = select(User.kgid).where(field == value.strip())
+    if exclude_kgid:
+        stmt = stmt.where(User.kgid != exclude_kgid.strip())
+    return db.execute(stmt.limit(1)).scalar_one_or_none() is None
+
+
 def _financial_period_for_date(value: date) -> Tuple[str, str]:
     """Derive legacy financial period fields from a membership effective date."""
     financial_year_start = value.year if value.month >= 4 else value.year - 1
@@ -65,12 +90,16 @@ def create_member(
     if existing_kgid:
         return None, f"A member with KGID '{kgid_clean}' is already registered."
 
-    # 2. Check Share Number uniqueness if provided
+    # 2. Check Share and Buckle Number uniqueness if provided
     if payload.share_number:
         share_clean = payload.share_number.strip()
-        stmt = select(User).where(User.share_number == share_clean)
-        if db.execute(stmt).scalar_one_or_none():
+        if not is_member_field_available(db, "share_number", share_clean):
             return None, f"Share Number '{share_clean}' is already assigned to another member."
+
+    if payload.buckle_number:
+        buckle_clean = payload.buckle_number.strip()
+        if not is_member_field_available(db, "buckle_number", buckle_clean):
+            return None, f"Buckle Number '{buckle_clean}' is already assigned to another member."
 
     # 3. Check Police Station existence and active status
     station = db.get(PoliceStation, payload.ps_id)
@@ -149,6 +178,15 @@ def update_member(
         changes["share_number"] = share_number
     elif "share_number" in changes:
         changes["share_number"] = None
+
+    buckle_number = changes.get("buckle_number")
+    if buckle_number:
+        buckle_number = buckle_number.strip()
+        if not is_member_field_available(db, "buckle_number", buckle_number, member.kgid):
+            return None, f"Buckle Number '{buckle_number}' is already assigned to another member."
+        changes["buckle_number"] = buckle_number
+    elif "buckle_number" in changes:
+        changes["buckle_number"] = None
 
     if "ps_id" in changes and changes["ps_id"] != member.ps_id:
         station = db.get(PoliceStation, changes["ps_id"])
