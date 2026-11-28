@@ -81,6 +81,7 @@ from app.schemas.user import UserCreate, UserStatusUpdate, UserUpdate
 from app.models.enums import DocTypeEnum
 
 from app.services import auth_service, police_station_service, user_service
+from app.services.loan_service import _calculate_schedule_end_date
 from app.dependencies.auth import get_current_admin, require_password_changed
 from app.routes import auth, police_stations, users
 
@@ -115,6 +116,11 @@ def run_all_tests():
     print("=" * 80)
     print("STARTING SP OFFICE BACKEND FOUNDATION & AUTHENTICATION VERIFICATION SUITE")
     print("=" * 80)
+
+    assert _calculate_schedule_end_date("2026-11-28", 25, 28) == date(2028, 11, 28)
+    assert _calculate_schedule_end_date("2026-01-31", 2, 31) == date(2026, 2, 28)
+    assert _calculate_schedule_end_date("2028-01-31", 2, 31) == date(2028, 2, 29)
+    print("[TEST 0] Manual installment end dates and month-end clamping verified.")
 
     # 1. Setup Test Engine and Schema
     print("[TEST 1] Creating database schema in SQLite test engine...")

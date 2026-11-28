@@ -370,11 +370,13 @@
     "monthlyInterest": "Monthly Interest (₹)",
     "monthlyInterestRate": "Monthly Interest Rate (%)",
     "averageMonthlyInterest": "Average Monthly Interest",
+    "totalScheduledInterest": "Total Interest",
     "recoveredAmount": "Recovered (₹)",
     "outstandingBalance": "Outstanding (₹)",
     "totalInterestPaid": "Interest Paid (₹)",
     "installments": "Installments",
     "totalInstallments": "Total Installments",
+    "installmentEndDateHelper": "Enter the installment count; the end date is calculated from the repayment start.",
     "startMonth": "Repayment Start",
     "endDate": "End Date",
     "documentAttachment": "Document Attachment (PDF / Image)",
@@ -579,7 +581,8 @@
     "maxLength": "Maximum {{n}} characters allowed.",
     "digitsOnly": "Only numeric digits are allowed.",
     "ifscInvalid": "Invalid IFSC code format. Example: SBIN0001234",
-    "minValue": "Value must be at least {{n}}."
+    "minValue": "Value must be at least {{n}}.",
+    "maxValue": "Value must be no more than {{n}}."
   },
   "common": {
     "save": "Save Changes",

@@ -1,5 +1,5 @@
 """Service layer for Loan Management and Loan Payment Transactions."""
-from decimal import Decimal, ROUND_CEILING
+from decimal import Decimal
 from datetime import date
 import re
 from calendar import monthrange
@@ -13,6 +13,35 @@ from app.models.police_station import PoliceStation
 from app.models.enums import LoanTypeEnum
 from app.schemas.loan import LoanCreate, LoanUpdate, LoanPaymentCreate
 from app.services import user_service
+
+
+def _calculate_schedule_end_date(start_month: str, installments: int, fallback_day: int) -> Optional[date]:
+    """Calculate the final installment date from a start month and installment count."""
+    start_match = re.match(r"^(\d{4})-(\d{2})(?:-(\d{2}))?$", start_month.strip())
+    if start_match:
+        start_year = int(start_match.group(1))
+        start_month_number = int(start_match.group(2))
+        start_day = int(start_match.group(3) or fallback_day)
+    else:
+        month_match = re.match(r"^([A-Za-z]+)\s+(\d{4})$", start_month.strip())
+        month_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+        if not month_match:
+            return None
+        try:
+            start_month_number = month_names.index(month_match.group(1).capitalize()) + 1
+        except ValueError:
+            return None
+        start_year = int(month_match.group(2))
+        start_day = fallback_day
+
+    if not 1 <= start_month_number <= 12:
+        return None
+
+    end_month_index = (start_month_number - 1) + (installments - 1)
+    end_year = start_year + (end_month_index // 12)
+    end_month_number = (end_month_index % 12) + 1
+    end_day = min(start_day, monthrange(end_year, end_month_number)[1])
+    return date(end_year, end_month_number, end_day)
 
 
 def _build_loan_dict(
@@ -73,36 +102,13 @@ def create_loan(db: Session, payload: LoanCreate) -> Tuple[Optional[Loan], str]:
     if payload.monthly_principal <= Decimal("0.00"):
         return None, "Monthly principal must be greater than zero."
 
-    calculated_installments = int(
-        (payload.sanction_amount / payload.monthly_principal).to_integral_value(rounding="ROUND_CEILING")
+    calculated_end_date = _calculate_schedule_end_date(
+        payload.start_month,
+        payload.total_installments,
+        payload.sanction_date.day,
     )
-
-    if payload.total_installments != calculated_installments:
-        return None, f"Total installments must be {calculated_installments} for this sanction and monthly principal."
-
-    start_match = re.match(r"^(\d{4})-(\d{2})(?:-(\d{2}))?$", payload.start_month.strip())
-    if start_match:
-        start_year = int(start_match.group(1))
-        start_month_number = int(start_match.group(2))
-    else:
-        month_match = re.match(r"^([A-Za-z]+)\s+(\d{4})$", payload.start_month.strip())
-        month_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-        if not month_match:
-            return None, "Start month must be YYYY-MM or Month YYYY."
-        try:
-            start_month_number = month_names.index(month_match.group(1).capitalize()) + 1
-        except ValueError:
-            return None, "Invalid start month."
-        start_year = int(month_match.group(2))
-
-    end_month_index = (start_month_number - 1) + (calculated_installments - 1)
-    end_year = start_year + (end_month_index // 12)
-    end_month_number = (end_month_index % 12) + 1
-    calculated_end_date = date(
-        end_year,
-        end_month_number,
-        min(payload.sanction_date.day, monthrange(end_year, end_month_number)[1]),
-    )
+    if calculated_end_date is None:
+        return None, "Start month must be YYYY-MM-DD or Month YYYY."
 
     if payload.end_date != calculated_end_date:
         return None, f"End date must be {calculated_end_date.isoformat()} for this schedule."
@@ -302,10 +308,18 @@ def update_loan(db: Session, loan_id: int, payload: LoanUpdate) -> Tuple[Optiona
     if loan.monthly_principal <= Decimal("0.00"):
         return None, "Monthly principal must be greater than zero."
 
-    calculated_installments = int(
-        (loan.sanction_amount / loan.monthly_principal).to_integral_value(rounding="ROUND_CEILING")
+    if loan.total_installments <= 0:
+        return None, "Total installments must be greater than zero."
+
+    calculated_end_date = _calculate_schedule_end_date(
+        loan.start_month,
+        loan.total_installments,
+        loan.sanction_date.day,
     )
-    loan.total_installments = calculated_installments
+    if calculated_end_date is None:
+        return None, "Start month must be YYYY-MM-DD or Month YYYY."
+    if loan.end_date != calculated_end_date:
+        return None, f"End date must be {calculated_end_date.isoformat()} for this schedule."
 
     if loan.end_date < loan.sanction_date:
         return None, "End date cannot be earlier than sanction date."

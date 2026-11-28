@@ -342,11 +342,13 @@
     "monthlyInterest": "ಮಾಸಿಕ ಬಡ್ಡಿ (₹)",
     "monthlyInterestRate": "ಮಾಸಿಕ ಬಡ್ಡಿ ದರ (%)",
     "averageMonthlyInterest": "ಸರಾಸರಿ ಮಾಸಿಕ ಬಡ್ಡಿ",
+    "totalScheduledInterest": "ಒಟ್ಟು ಬಡ್ಡಿ",
     "recoveredAmount": "ವಸೂಲಾದ ಮೊತ್ತ (₹)",
     "outstandingBalance": "ಬಾಕಿ ಮೊತ್ತ (₹)",
     "totalInterestPaid": "ಪಾವತಿಸಿದ ಬಡ್ಡಿ (₹)",
     "installments": "ಕಂತುಗಳು",
     "totalInstallments": "ಒಟ್ಟು ಕಂತುಗಳು",
+    "installmentEndDateHelper": "ಕಂತುಗಳ ಸಂಖ್ಯೆಯನ್ನು ನಮೂದಿಸಿ; ಮರುಪಾವತಿ ಪ್ರಾರಂಭದ ಆಧಾರದ ಮೇಲೆ ಕೊನೆಯ ದಿನಾಂಕ ಲೆಕ್ಕಿಸಲಾಗುತ್ತದೆ.",
     "startMonth": "ಮರುಪಾವತಿ ಪ್ರಾರಂಭ",
     "endDate": "ಕೊನೆಯ ದಿನಾಂಕ",
     "documentAttachment": "ದಾಖಲೆ ಲಗತ್ತು (PDF / ಚಿತ್ರ)",
@@ -551,7 +553,8 @@
     "maxLength": "ಗರಿಷ್ಟ {{n}} ಅಕ್ಷರಗಳು ಅನುಮತಿಸಲಾಗುತ್ತದೆ.",
     "digitsOnly": "ಅಂಕೆಗಳು ಮಾತ್ರ ಅನುಮತಿಸಲಾಗುತ್ತದೆ.",
     "ifscInvalid": "ತಪ್ಪಾದ IFSC ಕೋಡ್ ಸ್ವರೂಪ. ಉದಾ: SBIN0001234",
-    "minValue": "ಮೌಲ್ಯ ಕನಿಷ್ಟ {{n}} ಆಗಿರಬೇಕು."
+    "minValue": "ಮೌಲ್ಯ ಕನಿಷ್ಟ {{n}} ಆಗಿರಬೇಕು.",
+    "maxValue": "ಮೌಲ್ಯ ಗರಿಷ್ಠ {{n}} ಆಗಿರಬೇಕು."
   },
   "common": {
     "save": "ಬದಲಾವಣೆಗಳನ್ನು ಉಳಿಸಿ",

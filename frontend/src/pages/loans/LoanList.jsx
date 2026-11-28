@@ -218,44 +218,50 @@ export default function LoanList() {
   const watchedInterestRate = parseFloat(loanForm.watch('interest_rate') || 0)
   const watchedMonthlyPrincipal = parseFloat(loanForm.watch('monthly_principal') || 0)
   const watchedStartMonth = loanForm.watch('start_month')
-  const calculatedInstallments = watchedSanctionAmount > 0 && watchedMonthlyPrincipal > 0
-    ? Math.ceil(watchedSanctionAmount / watchedMonthlyPrincipal)
-    : 0
+  const watchedInstallments = Number.parseInt(loanForm.watch('total_installments') || 0, 10) || 0
 
   useEffect(() => {
-    if (calculatedInstallments > 0) {
-      loanForm.setValue('total_installments', String(calculatedInstallments), { shouldValidate: true })
-
-      if (watchedStartMonth) {
-        const startDate = new Date(`${watchedStartMonth}T00:00:00`)
-        if (!Number.isNaN(startDate.getTime())) {
-          const endDate = new Date(
-            startDate.getFullYear(),
-            startDate.getMonth() + (calculatedInstallments - 1),
-            startDate.getDate(),
-          )
-          const endDateValue = [
-            endDate.getFullYear(),
-            String(endDate.getMonth() + 1).padStart(2, '0'),
-            String(endDate.getDate()).padStart(2, '0'),
-          ].join('-')
-          loanForm.setValue('end_date', endDateValue, { shouldValidate: true })
-        }
+    if (watchedInstallments > 0 && watchedInstallments <= 360 && watchedStartMonth) {
+      const startDate = new Date(`${watchedStartMonth}T00:00:00`)
+      if (!Number.isNaN(startDate.getTime())) {
+        const endMonth = new Date(
+          startDate.getFullYear(),
+          startDate.getMonth() + watchedInstallments - 1,
+          1,
+        )
+        const lastDayOfEndMonth = new Date(
+          endMonth.getFullYear(),
+          endMonth.getMonth() + 1,
+          0,
+        ).getDate()
+        const endDate = new Date(
+          endMonth.getFullYear(),
+          endMonth.getMonth(),
+          Math.min(startDate.getDate(), lastDayOfEndMonth),
+        )
+        const endDateValue = [
+          endDate.getFullYear(),
+          String(endDate.getMonth() + 1).padStart(2, '0'),
+          String(endDate.getDate()).padStart(2, '0'),
+        ].join('-')
+        loanForm.setValue('end_date', endDateValue, { shouldValidate: true })
       }
     } else {
-      loanForm.setValue('total_installments', '0', { shouldValidate: false })
       loanForm.setValue('end_date', '', { shouldValidate: false })
     }
-  }, [watchedSanctionAmount, watchedMonthlyPrincipal, watchedStartMonth, calculatedInstallments])
+  }, [watchedInstallments, watchedStartMonth])
 
-  const averageMonthlyInterest = calculatedInstallments > 0
-    ? Number((Array.from({ length: calculatedInstallments }, (_, installmentIndex) => {
+  const totalScheduledInterest = watchedInstallments > 0
+    ? Array.from({ length: watchedInstallments }, (_, installmentIndex) => {
       const openingBalance = Math.max(
         0,
         (watchedSanctionAmount || 0) - (watchedMonthlyPrincipal || 0) * installmentIndex,
       )
       return Number(((openingBalance * (watchedInterestRate || 0)) / 1200).toFixed(2))
-    }).reduce((total, monthlyInterest) => total + monthlyInterest, 0) / calculatedInstallments).toFixed(2))
+    }).reduce((total, monthlyInterest) => total + monthlyInterest, 0)
+    : 0
+  const averageMonthlyInterest = watchedInstallments > 0
+    ? Number((totalScheduledInterest / watchedInstallments).toFixed(2))
     : 0
 
   // Submit Create or Edit Loan
@@ -856,7 +862,7 @@ export default function LoanList() {
               max="100"
               required
               placeholder="e.g. 0.7083"
-              helperText={`${t('loans.averageMonthlyInterest')}: ${formatINR(averageMonthlyInterest)}`}
+              helperText={`${t('loans.averageMonthlyInterest')}: ${formatINR(averageMonthlyInterest)} · ${t('loans.totalScheduledInterest')}: ${formatINR(totalScheduledInterest)}`}
               error={loanForm.formState.errors.interest_rate?.message}
               {...loanForm.register('interest_rate', {
                 required: t('validation.required'),
@@ -884,13 +890,16 @@ export default function LoanList() {
             <Input
               label={t('loans.totalInstallments')}
               type="number"
-              readOnly
               min="1"
               max="360"
               required
-              helperText={calculatedInstallments > 0 ? `Automatically calculated: ${calculatedInstallments} installments` : 'Enter sanction amount and monthly principal'}
+              helperText={t('loans.installmentEndDateHelper')}
               error={loanForm.formState.errors.total_installments?.message}
-              {...loanForm.register('total_installments', { required: t('validation.required') })}
+              {...loanForm.register('total_installments', {
+                required: t('validation.required'),
+                min: { value: 1, message: t('validation.minValue', { n: 1 }) },
+                max: { value: 360, message: t('validation.maxValue', { n: 360 }) },
+              })}
             />
 
             <div className="md:col-span-2">
